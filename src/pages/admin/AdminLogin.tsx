@@ -2,16 +2,16 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Zap, Mail, Lock, ArrowLeft, Eye, EyeOff, Shield, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { apiClient } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 
 function mapUser(user: any) {
   return {
     id: String(user.id),
-    email: user.email,
-    username: user.username || user.email.split("@")[0],
-    avatar: user.avatar,
-    role: user.role || "admin",
+    email: user.email || "",
+    username: user.user_metadata?.username || user.email?.split("@")[0] || "",
+    avatar: user.user_metadata?.avatar || "",
+    role: user.user_metadata?.role || "admin",
   };
 }
 
@@ -37,7 +37,7 @@ export default function AdminLogin() {
   const handleSendOtp = async () => {
     if (!email.trim()) return;
     setLoading(true);
-    const { data, error } = await apiClient.post("/auth.php?action=send_otp", {
+    const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
     });
     if (error) {
@@ -54,7 +54,7 @@ export default function AdminLogin() {
   const handleResendAdminOtp = async () => {
     if (resendCooldown > 0 || loading) return;
     setLoading(true);
-    const { data, error } = await apiClient.post("/auth.php?action=send_otp", {
+    const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
     });
     if (error) {
@@ -70,8 +70,11 @@ export default function AdminLogin() {
     setLoading(true);
     const demoEmail = "demo.admin@tripmobility.ph";
     const demoPass = "AdminTrip2026!";
-    // Try sign in first
-    const { data, error } = await apiClient.post("/auth.php?action=login", { email: demoEmail, password: demoPass });
+    // Try sign in
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: demoEmail,
+      password: demoPass,
+    });
     if (error) {
       // Account may not exist — pre-fill credentials and let user proceed manually
       setEmail(demoEmail);
@@ -82,8 +85,7 @@ export default function AdminLogin() {
       setLoading(false);
       return;
     }
-    if (data && data.user && data.token) {
-      localStorage.setItem("token", data.token);
+    if (data && data.user) {
       login(mapUser(data.user));
       navigate("/admin");
     }
@@ -95,21 +97,31 @@ export default function AdminLogin() {
     setLoading(true);
     
     if (mode === "setup") {
-      setStep("password");
-      setLoading(false);
-    } else {
-      // Direct OTP sign-in for admins
-      const { data, error } = await apiClient.post("/auth.php?action=verify_otp", {
+      const { error } = await supabase.auth.verifyOtp({
         email: email.trim(),
-        otp: otp.trim(),
+        token: otp.trim(),
+        type: 'email',
       });
       if (error) {
         toast.error("Invalid OTP: " + error.message);
         setLoading(false);
         return;
       }
-      if (data && data.user && data.token) {
-        localStorage.setItem("token", data.token);
+      setStep("password");
+      setLoading(false);
+    } else {
+      // Direct OTP sign-in for admins
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: otp.trim(),
+        type: 'email',
+      });
+      if (error) {
+        toast.error("Invalid OTP: " + error.message);
+        setLoading(false);
+        return;
+      }
+      if (data && data.user) {
         login(mapUser(data.user));
         navigate("/admin");
       }
@@ -120,7 +132,7 @@ export default function AdminLogin() {
   const handlePasswordLogin = async () => {
     if (!password.trim()) return;
     setLoading(true);
-    const { data, error } = await apiClient.post("/auth.php?action=login", {
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password: password.trim(),
     });
@@ -129,8 +141,7 @@ export default function AdminLogin() {
       setLoading(false);
       return;
     }
-    if (data && data.user && data.token) {
-      localStorage.setItem("token", data.token);
+    if (data && data.user) {
       login(mapUser(data.user));
       navigate("/admin");
     }
@@ -140,18 +151,19 @@ export default function AdminLogin() {
   const handleSetPassword = async () => {
     if (password.length < 6) return toast.error("Password must be at least 6 characters");
     setLoading(true);
-    const { data, error } = await apiClient.post("/auth.php?action=verify_otp", {
-      email: email.trim(),
-      otp: otp.trim(),
+    const { data, error } = await supabase.auth.updateUser({
       password: password.trim(),
+      data: {
+        username: email.split("@")[0],
+        role: "admin",
+      }
     });
     if (error) {
       toast.error(error.message);
       setLoading(false);
       return;
     }
-    if (data && data.user && data.token) {
-      localStorage.setItem("token", data.token);
+    if (data && data.user) {
       login(mapUser(data.user));
       navigate("/admin");
     }

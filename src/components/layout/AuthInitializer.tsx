@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { apiClient } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 
@@ -8,21 +8,16 @@ export default function AuthInitializer() {
   const { login: customerLogin, logout: customerLogout, setLoading: setCustomerLoading } = useCustomerAuth();
 
   useEffect(() => {
-    let mounted = true;
-
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setAdminLoading(false);
-      setCustomerLoading(false);
-      adminLogout();
-      customerLogout();
-      return;
-    }
-
-    apiClient.get("/auth.php").then(({ data, error }) => {
-      if (!mounted) return;
-      if (!error && data && data.user) {
-        const user = data.user;
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session && session.user) {
+        const user = {
+          id: session.user.id,
+          email: session.user.email || "",
+          username: session.user.user_metadata?.username || session.user.email?.split("@")[0] || "",
+          avatar: session.user.user_metadata?.avatar || "",
+          role: session.user.user_metadata?.role || (session.user.email?.endsWith("@tripmobility.ph") ? "admin" : "customer"),
+        };
         const isAdmin = user.role === "admin" || user.role === "super_admin";
         if (isAdmin) {
           adminLogin(user);
@@ -30,7 +25,30 @@ export default function AuthInitializer() {
           customerLogin(user);
         }
       } else {
-        localStorage.removeItem("token");
+        adminLogout();
+        customerLogout();
+      }
+      setAdminLoading(false);
+      setCustomerLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session && session.user) {
+        const user = {
+          id: session.user.id,
+          email: session.user.email || "",
+          username: session.user.user_metadata?.username || session.user.email?.split("@")[0] || "",
+          avatar: session.user.user_metadata?.avatar || "",
+          role: session.user.user_metadata?.role || (session.user.email?.endsWith("@tripmobility.ph") ? "admin" : "customer"),
+        };
+        const isAdmin = user.role === "admin" || user.role === "super_admin";
+        if (isAdmin) {
+          adminLogin(user);
+        } else {
+          customerLogin(user);
+        }
+      } else {
         adminLogout();
         customerLogout();
       }
@@ -39,7 +57,7 @@ export default function AuthInitializer() {
     });
 
     return () => {
-      mounted = false;
+      subscription.unsubscribe();
     };
   }, [adminLogin, adminLogout, customerLogin, customerLogout, setAdminLoading, setCustomerLoading]);
 

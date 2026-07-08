@@ -3,7 +3,7 @@ import {
   MessageCircle, X, Send, Minimize2, Maximize2, Zap,
   Loader2, CheckCircle, Bot, User, Clock, Star
 } from "lucide-react";
-import { apiClient } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 
 interface ChatMessage {
@@ -55,12 +55,16 @@ export default function LiveChat() {
 
   // Check if chat is enabled
   useEffect(() => {
-    apiClient.get("/settings.php").then(({ data }) => {
-      if (data && Array.isArray(data)) {
-        const chatSetting = data.find((s: any) => s.key === "chat_enabled");
-        if (chatSetting) setChatEnabled(chatSetting.value !== false);
-      }
-    });
+    supabase
+      .from("system_settings")
+      .select("*")
+      .eq("setting_key", "chat_enabled")
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          setChatEnabled(data.setting_value === "true" || data.setting_value === true || data.setting_value === "1");
+        }
+      });
   }, []);
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -68,14 +72,20 @@ export default function LiveChat() {
 
   const fetchMessages = useCallback(async () => {
     if (!sessionId) return;
-    const { data } = await apiClient.get(`/chat.php?session_id=${sessionId}`);
-    if (data && data.messages) {
-      const mapped = data.messages.map((m: any) => ({
-        ...m,
+    const { data } = await supabase
+      .from("chat_messages")
+      .select("*")
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: true });
+    if (data) {
+      const mapped = data.map((m: any) => ({
         id: String(m.id),
-        sender_type: m.sender_type === "user" ? "customer" : m.sender_type,
-        sender_name: m.sender_type === "user" ? "You" : (m.sender_type === "bot" ? "TRIP AI" : "Agent"),
-        read: m.read === 1 || m.read === true
+        session_id: m.session_id,
+        sender_type: m.sender === "user" ? "customer" : m.sender,
+        sender_name: m.sender === "user" ? "You" : (m.sender === "bot" ? "TRIP AI" : "Agent"),
+        message: m.message,
+        read: m.read === 1 || m.read === true,
+        created_at: m.created_at,
       }));
       setMessages(mapped);
       if (!open || minimized) {
@@ -85,17 +95,54 @@ export default function LiveChat() {
     }
   }, [sessionId, open, minimized]);
 
+  // Realtime subscription setup
   useEffect(() => {
     if (!sessionId) return;
     fetchMessages();
-    pollRef.current = setInterval(fetchMessages, 3000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+
+    // Subscribe to new messages
+    const channel = supabase
+      .channel(`chat:${sessionId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as any;
+          const mapped = {
+            id: String(newMsg.id),
+            session_id: newMsg.session_id,
+            sender_type: newMsg.sender === "user" ? "customer" : newMsg.sender,
+            sender_name: newMsg.sender === "user" ? "You" : (newMsg.sender === "bot" ? "TRIP AI" : "Agent"),
+            message: newMsg.message,
+            read: newMsg.read === 1 || newMsg.read === true,
+            created_at: newMsg.created_at,
+          };
+          setMessages((prev) => {
+            if (prev.some(m => m.id === mapped.id)) return prev;
+            return [...prev, mapped];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fetchMessages, sessionId]);
 
   useEffect(() => {
     if (open && !minimized && sessionId) {
       setUnreadCount(0);
-      apiClient.post("/chat.php?action=read", { session_id: sessionId });
+      supabase
+        .from("chat_messages")
+        .update({ read: true })
+        .eq("session_id", sessionId)
+        .neq("sender", "user");
     }
   }, [open, minimized, sessionId]);
 
@@ -104,18 +151,19 @@ export default function LiveChat() {
     const email = customer?.email || guestEmail.trim() || null;
     const generatedId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     
-    const { data, error } = await apiClient.post("/chat.php?action=create_session", {
-      session_id: generatedId,
+    const { error } = await supabase.from("chat_sessions").insert({
+      id: generatedId,
       user_name: name,
-      user_email: email
+      user_email: email,
+      status: "active"
     });
-    if (error || !data) return;
+    if (error) return;
     
     setSessionId(generatedId);
     setStarted(true);
     setShowQuickActions(true);
     
-    await apiClient.post("/chat.php", {
+    await supabase.from("chat_messages").insert({
       session_id: generatedId,
       sender: "bot",
       message: BOT_WELCOME
@@ -126,9 +174,11 @@ export default function LiveChat() {
 
   const getAIResponse = async (userMessage: string, history: ConvTurn[]) => {
     setAiTyping(true);
-    const { data, error } = await apiClient.post("/ai-chat-bot.php", {
-      message: userMessage,
-      conversation_history: history,
+    const { data, error } = await supabase.functions.invoke("ai-chat-bot", {
+      body: {
+        message: userMessage,
+        conversation_history: history,
+      }
     });
 
     setAiTyping(false);
@@ -147,7 +197,7 @@ export default function LiveChat() {
     setSending(true);
 
     // Insert customer message
-    await apiClient.post("/chat.php", {
+    await supabase.from("chat_messages").insert({
       session_id: sessionId,
       sender: "user",
       message: msg
@@ -163,7 +213,7 @@ export default function LiveChat() {
     // Get AI response
     const aiReply = await getAIResponse(msg, trimmedHistory.slice(0, -1));
     if (aiReply) {
-      await apiClient.post("/chat.php", {
+      await supabase.from("chat_messages").insert({
         session_id: sessionId,
         sender: "bot",
         message: aiReply

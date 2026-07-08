@@ -4,7 +4,7 @@ import {
   X, Zap, Archive, MessageCircle, Bell, BellOff
 } from "lucide-react";
 import { toast } from "sonner";
-import { apiClient } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 
 interface ChatSession {
@@ -57,7 +57,6 @@ export default function AdminChat() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const pollRef = useRef<NodeJS.Timeout | null>(null);
   const prevUnreadRef = useRef<Record<string, number>>({});
   const notifEnabledRef = useRef(false);
 
@@ -105,17 +104,40 @@ export default function AdminChat() {
 
   const fetchSessions = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    const { data, error } = await apiClient.get("/chat.php?action=list_sessions");
+    const { data: sessionsData, error: sessionsError } = await supabase
+      .from("chat_sessions")
+      .select(`
+        *,
+        chat_messages (
+          message,
+          created_at,
+          read,
+          sender
+        )
+      `)
+      .order("updated_at", { ascending: false });
 
-    if (error || !data || !data.sessions) { if (!silent) setLoading(false); return; }
+    if (sessionsError || !sessionsData) {
+      if (!silent) setLoading(false);
+      return;
+    }
 
-    const enriched = data.sessions.map((s: any) => ({
-      ...s,
-      customer_name: s.customer_name || s.user_name || "Visitor",
-      customer_email: s.customer_email || s.user_email || "",
-      unread_count: parseInt(s.unread_count) || 0,
-      last_message: s.last_message || ""
-    }));
+    const enriched = sessionsData.map((s: any) => {
+      const msgs = s.chat_messages || [];
+      const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+      const unreadCount = msgs.filter((m: any) => m.sender !== "agent" && !m.read).length;
+      return {
+        id: s.id,
+        customer_name: s.user_name || "Visitor",
+        customer_email: s.user_email || "",
+        status: s.status || "open",
+        assigned_agent: s.assigned_agent || null,
+        last_message_at: lastMsg ? lastMsg.created_at : s.updated_at,
+        created_at: s.created_at,
+        unread_count: unreadCount,
+        last_message: lastMsg ? lastMsg.message : "",
+      };
+    });
 
     // ── Detect new unread messages and fire desktop notifications ──
     enriched.forEach((sess: any) => {
@@ -133,19 +155,29 @@ export default function AdminChat() {
 
   const fetchMessages = useCallback(async () => {
     if (!selected) return;
-    const { data } = await apiClient.get(`/chat.php?session_id=${selected.id}`);
-    if (data && data.messages) {
-      const mapped = data.messages.map((m: any) => ({
-        ...m,
+    const { data } = await supabase
+      .from("chat_messages")
+      .select("*")
+      .eq("session_id", selected.id)
+      .order("created_at", { ascending: true });
+    if (data) {
+      const mapped = data.map((m: any) => ({
         id: String(m.id),
-        sender_type: m.sender_type === "user" ? "customer" : m.sender_type,
-        sender_name: m.sender_type === "user" ? "You" : (m.sender_type === "bot" ? "TRIP AI" : (m.sender_name || "Agent")),
-        read: m.read === 1 || m.read === true
+        session_id: m.session_id,
+        sender_type: m.sender === "user" ? "customer" : m.sender,
+        sender_name: m.sender === "user" ? "You" : (m.sender === "bot" ? "TRIP AI" : "Agent"),
+        message: m.message,
+        read: m.read === 1 || m.read === true,
+        created_at: m.created_at,
       }));
       setMessages(mapped);
     }
 
-    await apiClient.post("/chat.php?action=read", { session_id: selected.id });
+    await supabase
+      .from("chat_messages")
+      .update({ read: true })
+      .eq("session_id", selected.id)
+      .neq("sender", "agent");
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [selected]);
 
@@ -159,24 +191,69 @@ export default function AdminChat() {
     if (!selected) return;
     setMsgLoading(true);
     fetchMessages().then(() => setMsgLoading(false));
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(fetchMessages, 3000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [selected, fetchMessages]);
+
+  useEffect(() => {
+    // Subscribe to all chat message inserts to update sessions and messages list
+    const channel = supabase
+      .channel("admin-chat-messages")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+        },
+        (payload) => {
+          const newMsg = payload.new as any;
+          fetchSessions(true);
+          if (selected && newMsg.session_id === selected.id) {
+            const mapped = {
+              id: String(newMsg.id),
+              session_id: newMsg.session_id,
+              sender_type: newMsg.sender === "user" ? "customer" : newMsg.sender,
+              sender_name: newMsg.sender === "user" ? "You" : (newMsg.sender === "bot" ? "TRIP AI" : "Agent"),
+              message: newMsg.message,
+              read: newMsg.read === 1 || newMsg.read === true,
+              created_at: newMsg.created_at,
+            };
+            setMessages((prev) => {
+              if (prev.some(m => m.id === mapped.id)) return prev;
+              return [...prev, mapped];
+            });
+            if (newMsg.sender !== "agent") {
+              supabase
+                .from("chat_messages")
+                .update({ read: true })
+                .eq("id", newMsg.id)
+                .then(() => {
+                  fetchSessions(true);
+                });
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selected, fetchSessions]);
 
   const sendMessage = async () => {
     if (!input.trim() || !selected || sending) return;
     const msg = input.trim();
     setInput("");
     setSending(true);
-    await apiClient.post("/chat.php", {
+    await supabase.from("chat_messages").insert({
       session_id: selected.id,
       sender: "agent",
       message: msg,
     });
-    await apiClient.put(`/chat.php?id=${selected.id}`, {
-      assigned_agent: user?.username,
-    });
+    await supabase
+      .from("chat_sessions")
+      .update({ assigned_agent: user?.username })
+      .eq("id", selected.id);
     await fetchMessages();
     setSending(false);
   };
@@ -186,7 +263,10 @@ export default function AdminChat() {
   };
 
   const updateStatus = async (sessionId: string, status: string) => {
-    const { error } = await apiClient.put(`/chat.php?id=${sessionId}`, { status });
+    const { error } = await supabase
+      .from("chat_sessions")
+      .update({ status })
+      .eq("id", sessionId);
     if (!error) {
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status } : s));
       if (selected?.id === sessionId) setSelected(s => s ? { ...s, status } : null);

@@ -1,16 +1,8 @@
-// General API Client for TRIP E-Bikes App
-// Interacts with the PHP backend at /api/
+import { supabase } from "./supabase";
 
 export interface ApiResponse<T = any> {
   data: T | null;
   error: { message: string } | null;
-}
-
-const BASE_URL = '/api';
-
-function getAuthHeader(): Record<string, string> {
-  const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function request<T = any>(
@@ -18,74 +10,194 @@ async function request<T = any>(
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
   try {
-    // Normalize endpoint (make sure it has .php if calling auth, products, quotations etc., and starts with /)
-    let url = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const method = options.method || "GET";
+    const body = options.body ? JSON.parse(options.body as string) : null;
     
-    // If the endpoint does not end with .php and does not have query parameters indicating otherwise,
-    // we can append .php if it's one of our known endpoints, or simply keep it.
-    // To make it easy, we'll map or check if it needs .php
-    const cleanPath = url.split('?')[0];
-    if (!cleanPath.endsWith('.php') && !cleanPath.includes('.')) {
-      const parts = url.split('?');
-      parts[0] = parts[0] + '.php';
-      url = parts.join('?');
-    }
+    // Parse query params safely
+    const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    const urlObj = new URL(cleanEndpoint, "https://api-client.local");
+    const path = urlObj.pathname;
+    const params = Object.fromEntries(urlObj.searchParams.entries());
 
-    const headers = {
-      ...getAuthHeader(),
-      ...(options.headers || {}),
-    } as Record<string, string>;
+    let responseData: any = null;
 
-    if (!(options.body instanceof FormData)) {
-      headers['Content-Type'] = 'application/json';
-    }
-
-    const config: RequestInit = {
-      ...options,
-      headers,
-    };
-
-    const response = await fetch(`${BASE_URL}${url}`, config);
-    
-    // Handle unauthorized globally
-    if (response.status === 401) {
-      localStorage.removeItem('token');
-    }
-
-    const contentType = response.headers.get('content-type');
-    let result: any;
-    if (contentType && contentType.includes('application/json')) {
-      result = await response.json();
-    } else {
-      result = { message: await response.text() };
-    }
-
-    if (!response.ok || (result && result.status === 'error')) {
-      return {
-        data: null,
-        error: { message: result.message || response.statusText || 'Request failed' },
-      };
-    }
-
-    // Adapt PHP responses which usually wrap data in key/values
-    // PHP success responses have { status: 'success', data: ... } or other fields directly at root
-    let adaptedData = result;
-    if (result && result.status === 'success') {
-      // If result contains other keys like products, appointments, user, etc.
-      // let's return the whole result, or filter it out.
-      // But standard api responses can just return the response object itself.
-      // Let's make it return result.data !== undefined ? result.data : result.
-      adaptedData = result.data !== undefined ? result.data : result;
+    if (path.includes("settings")) {
+      if (method === "GET") {
+        const { data, error } = await supabase.from("system_settings").select("*");
+        if (error) throw error;
+        responseData = data?.map((s: any) => ({
+          key: s.setting_key,
+          value: s.setting_value === "true" || s.setting_value === true || s.setting_value === "1" ? true : (s.setting_value === "false" || s.setting_value === false || s.setting_value === "0" ? false : s.setting_value)
+        }));
+      } else if (method === "POST" || method === "PUT") {
+        const { error } = await supabase.from("system_settings").upsert(
+          Object.entries(body).map(([key, val]) => ({
+            setting_key: key,
+            setting_value: String(val)
+          }))
+        );
+        if (error) throw error;
+        responseData = { status: "success" };
+      }
+    } else if (path.includes("products")) {
+      if (method === "GET") {
+        if (params.id) {
+          const { data, error } = await supabase.from("products_cms").select("*").eq("id", params.id).single();
+          if (error) throw error;
+          responseData = data;
+        } else if (params.action === "review_moderation") {
+          const { data, error } = await supabase.from("product_reviews").select(`
+            *,
+            products_cms ( name )
+          `).order("created_at", { ascending: false });
+          if (error) throw error;
+          responseData = {
+            reviews: data?.map((r: any) => ({
+              id: String(r.id),
+              product_id: String(r.product_id),
+              customer_id: r.reviewer_email,
+              rating: r.rating,
+              review_text: r.review_text,
+              verified_purchase: true,
+              helpful_count: r.helpful_count || 0,
+              moderation_status: r.status,
+              admin_reply: r.admin_reply,
+              admin_reply_at: r.updated_at,
+              created_at: r.created_at,
+              username: r.reviewer_name,
+              product_name: r.products_cms?.name
+            }))
+          };
+        } else {
+          const { data, error } = await supabase.from("products_cms").select("*").order("sort_order", { ascending: true });
+          if (error) throw error;
+          responseData = data;
+        }
+      }
+    } else if (path.includes("leads")) {
+      if (method === "GET") {
+        const { data, error } = await supabase.from("leads").select("*").order("created_at", { ascending: false });
+        if (error) throw error;
+        responseData = data;
+      } else if (method === "POST") {
+        const { data, error } = await supabase.from("leads").insert(body).select().single();
+        if (error) throw error;
+        responseData = data;
+      } else if (method === "PUT") {
+        const { data, error } = await supabase.from("leads").update(body).eq("id", params.id).select().single();
+        if (error) throw error;
+        responseData = data;
+      } else if (method === "DELETE") {
+        const { error } = await supabase.from("leads").delete().eq("id", params.id);
+        if (error) throw error;
+        responseData = { status: "success" };
+      }
+    } else if (path.includes("quotations")) {
+      if (method === "GET") {
+        const { data, error } = await supabase.from("quotations").select(`
+          *,
+          products_cms ( name )
+        `).order("created_at", { ascending: false });
+        if (error) throw error;
+        responseData = data?.map((q: any) => ({
+          ...q,
+          product_name: q.products_cms?.name || "Custom Design"
+        }));
+      } else if (method === "PUT") {
+        const { data, error } = await supabase.from("quotations").update(body).eq("id", params.id).select().single();
+        if (error) throw error;
+        responseData = data;
+      }
+    } else if (path.includes("submit-quote")) {
+      if (method === "POST") {
+        const { data, error } = await supabase.from("quotations").insert({
+          customer_name: body.name,
+          customer_email: body.email,
+          customer_phone: body.phone,
+          product_id: body.product_id ? parseInt(body.product_id) : null,
+          notes: body.notes || "",
+          custom_specs: body.custom_specs || null,
+          status: "pending"
+        }).select().single();
+        if (error) throw error;
+        responseData = data;
+      }
+    } else if (path.includes("appointments")) {
+      if (method === "GET") {
+        const { data, error } = await supabase.from("service_appointments").select("*").order("created_at", { ascending: false });
+        if (error) throw error;
+        responseData = data;
+      } else if (method === "POST") {
+        const { data, error } = await supabase.from("service_appointments").insert(body).select().single();
+        if (error) throw error;
+        responseData = data;
+      } else if (method === "PUT") {
+        const { data, error } = await supabase.from("service_appointments").update(body).eq("id", params.id).select().single();
+        if (error) throw error;
+        responseData = data;
+      }
+    } else if (path.includes("contacts") || path.includes("contact-form")) {
+      if (method === "GET") {
+        const { data, error } = await supabase.from("contact_messages").select("*").order("created_at", { ascending: false });
+        if (error) throw error;
+        responseData = data;
+      } else if (method === "POST") {
+        const { data, error } = await supabase.from("contact_messages").insert({
+          name: body.name,
+          email: body.email,
+          phone: body.phone || null,
+          subject: body.subject || null,
+          message: body.message
+        }).select().single();
+        if (error) throw error;
+        responseData = data;
+      } else if (method === "PUT") {
+        const { data, error } = await supabase.from("contact_messages").update(body).eq("id", params.id).select().single();
+        if (error) throw error;
+        responseData = data;
+      }
+    } else if (path.includes("blog")) {
+      if (method === "GET") {
+        if (params.slug) {
+          const { data, error } = await supabase.from("blog_posts").select("*").eq("slug", params.slug).single();
+          if (error) throw error;
+          responseData = data;
+        } else {
+          const { data, error } = await supabase.from("blog_posts").select("*").order("created_at", { ascending: false });
+          if (error) throw error;
+          responseData = data;
+        }
+      } else if (method === "POST") {
+        const { data, error } = await supabase.from("blog_posts").insert(body).select().single();
+        if (error) throw error;
+        responseData = data;
+      } else if (method === "PUT") {
+        const { data, error } = await supabase.from("blog_posts").update(body).eq("id", params.id).select().single();
+        if (error) throw error;
+        responseData = data;
+      } else if (method === "DELETE") {
+        const { error } = await supabase.from("blog_posts").delete().eq("id", params.id);
+        if (error) throw error;
+        responseData = { status: "success" };
+      }
+    } else if (path.includes("loyalty")) {
+      const email = params.email || body?.email;
+      if (method === "GET") {
+        const { data: balanceData } = await supabase.from("loyalty_points").select("*").eq("customer_email", email).single();
+        responseData = {
+          points: balanceData ? [{ id: String(balanceData.id), points: balanceData.points_balance, action_type: "earned", reason: "Points Balance", created_at: balanceData.updated_at }] : []
+        };
+      }
     }
 
     return {
-      data: adaptedData,
-      error: null,
+      data: responseData,
+      error: null
     };
   } catch (err: any) {
     return {
       data: null,
-      error: { message: err.message || 'Network error' },
+      error: { message: err.message || "Network error" }
     };
   }
 }

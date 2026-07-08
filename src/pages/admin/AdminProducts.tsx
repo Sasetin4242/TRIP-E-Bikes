@@ -6,8 +6,7 @@ import {
   Sparkles, Settings, RefreshCw, Search, Filter, TrendingUp,
   BarChart3, MessageSquare, ThumbsUp, ThumbsDown, Reply, AlertCircle
 } from "lucide-react";
-import { toast } from "sonner";
-import { apiClient } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase";
 import { PRODUCTS } from "@/constants/products";
 import { CustomSelect } from "@/components/ui/custom-select";
 
@@ -100,16 +99,42 @@ export default function AdminProducts() {
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await apiClient.get("/products.php");
+    const { data, error } = await supabase
+      .from("products_cms")
+      .select("*")
+      .order("sort_order", { ascending: true });
     if (!error) setProducts(data || []);
     setLoading(false);
   }, []);
 
   const fetchReviews = useCallback(async () => {
     setReviewsLoading(true);
-    const { data, error } = await apiClient.get("/products.php?action=review_moderation");
-    if (!error && data && data.reviews) {
-      setReviews(data.reviews);
+    const { data, error } = await supabase
+      .from("product_reviews")
+      .select(`
+        *,
+        products_cms (
+          name
+        )
+      `)
+      .order("created_at", { ascending: false });
+    if (!error && data) {
+      const mappedReviews = data.map((r: any) => ({
+        id: String(r.id),
+        product_id: String(r.product_id),
+        customer_id: r.reviewer_email,
+        rating: r.rating,
+        review_text: r.review_text,
+        verified_purchase: true,
+        helpful_count: r.helpful_count || 0,
+        moderation_status: r.status,
+        admin_reply: r.admin_reply,
+        admin_reply_at: r.updated_at,
+        created_at: r.created_at,
+        username: r.reviewer_name,
+        product_name: r.products_cms?.name,
+      }));
+      setReviews(mappedReviews);
     }
     setReviewsLoading(false);
   }, []);
@@ -124,16 +149,12 @@ export default function AdminProducts() {
       features: p.features, use_cases: p.useCases, colors: p.colors,
       addons: [], in_stock: p.inStock, published: true, sort_order: i,
     }));
-    let successCount = 0;
-    for (const item of insertions) {
-      const { error } = await apiClient.post("/products.php", item);
-      if (!error) successCount++;
-    }
-    if (successCount === insertions.length) {
+    const { error } = await supabase.from("products_cms").insert(insertions);
+    if (!error) {
       toast.success("Products imported!");
       fetchProducts();
     } else {
-      toast.error(`Imported ${successCount}/${insertions.length} products.`);
+      toast.error("Import failed: " + error.message);
     }
   };
 
@@ -172,31 +193,61 @@ export default function AdminProducts() {
 
   const handlePrimaryImageUpload = async (file: File) => {
     setUploadingImage(true);
-    const formData = new FormData();
-    formData.append("image", file);
-    const { data, error } = await apiClient.post("/upload.php", formData);
-    if (error) { toast.error("Upload failed: " + error.message); setUploadingImage(false); return; }
-    if (data && data.url) {
-      setForm(f => ({ ...f, primary_image_url: data.url }));
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from('products')
+        .upload(filePath, file);
+
+      if (error) {
+        toast.error("Upload failed: " + error.message);
+        setUploadingImage(false);
+        return;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('products')
+        .getPublicUrl(filePath);
+
+      setForm(f => ({ ...f, primary_image_url: publicUrl }));
       toast.success("Primary image uploaded!");
+    } catch (err: any) {
+      toast.error("Upload failed: " + err.message);
+    } finally {
+      setUploadingImage(false);
     }
-    setUploadingImage(false);
   };
 
   const handleGalleryUpload = async (files: FileList) => {
     setUploadingGallery(true);
     const urls: string[] = [];
-    for (const file of Array.from(files)) {
-      const formData = new FormData();
-      formData.append("image", file);
-      const { data, error } = await apiClient.post("/upload.php", formData);
-      if (!error && data && data.url) {
-        urls.push(data.url);
+    try {
+      for (const file of Array.from(files)) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+        const filePath = `${fileName}`;
+
+        const { data, error } = await supabase.storage
+          .from('products')
+          .upload(filePath, file);
+
+        if (!error) {
+          const { data: { publicUrl } } = supabase.storage
+            .from('products')
+            .getPublicUrl(filePath);
+          urls.push(publicUrl);
+        }
       }
+      setForm(f => ({ ...f, gallery_images: [...f.gallery_images, ...urls] }));
+      toast.success(`${urls.length} image${urls.length > 1 ? "s" : ""} added!`);
+    } catch (err: any) {
+      toast.error("Gallery upload failed: " + err.message);
+    } finally {
+      setUploadingGallery(false);
     }
-    setForm(f => ({ ...f, gallery_images: [...f.gallery_images, ...urls] }));
-    toast.success(`${urls.length} image${urls.length > 1 ? "s" : ""} added!`);
-    setUploadingGallery(false);
   };
 
   const handleSave = async () => {
@@ -214,11 +265,11 @@ export default function AdminProducts() {
       in_stock: form.in_stock, published: form.published, sort_order: form.sort_order,
     };
     if (editing) {
-      const { error } = await apiClient.put(`/products.php?id=${editing.id}`, payload);
+      const { error } = await supabase.from("products_cms").update(payload).eq("id", editing.id);
       if (error) { toast.error("Update failed: " + error.message); setSaving(false); return; }
       toast.success("Product updated!");
     } else {
-      const { error } = await apiClient.post("/products.php", payload);
+      const { error } = await supabase.from("products_cms").insert(payload);
       if (error) { toast.error("Create failed: " + error.message); setSaving(false); return; }
       toast.success("Product created!");
     }
@@ -229,34 +280,34 @@ export default function AdminProducts() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this product permanently?")) return;
-    const { error } = await apiClient.delete(`/products.php?id=${id}`);
+    const { error } = await supabase.from("products_cms").delete().eq("id", id);
     if (error) { toast.error(error.message); return; }
     toast.success("Product deleted.");
     fetchProducts();
   };
 
   const togglePublished = async (p: ProductCMS) => {
-    const { error } = await apiClient.put(`/products.php?id=${p.id}`, { published: !p.published });
+    const { error } = await supabase.from("products_cms").update({ published: !p.published }).eq("id", p.id);
     if (!error) { setProducts(prev => prev.map(x => x.id === p.id ? { ...x, published: !x.published } : x)); toast.success(p.published ? "Product hidden" : "Product published!"); }
   };
 
   const toggleStock = async (p: ProductCMS) => {
-    const { error } = await apiClient.put(`/products.php?id=${p.id}`, { in_stock: !p.in_stock });
+    const { error } = await supabase.from("products_cms").update({ in_stock: !p.in_stock }).eq("id", p.id);
     if (!error) { setProducts(prev => prev.map(x => x.id === p.id ? { ...x, in_stock: !x.in_stock } : x)); toast.success("Stock status updated."); }
   };
 
   const moderateReview = async (id: string, status: string) => {
-    const { error } = await apiClient.post("/products.php?action=review_moderation", { review_id: id, status });
+    const { error } = await supabase.from("product_reviews").update({ status }).eq("id", id);
     if (!error) { fetchReviews(); toast.success(`Review ${status}`); }
   };
 
   const deleteReview = async (id: string) => {
-    const { error } = await apiClient.delete(`/products.php?action=review_moderation&id=${id}`);
+    const { error } = await supabase.from("product_reviews").delete().eq("id", id);
     if (!error) { fetchReviews(); toast.success("Review deleted"); }
   };
 
   const submitReply = async (id: string) => {
-    const { error } = await apiClient.post("/products.php?action=review_moderation", { review_id: id, admin_reply: replyText.trim(), status: "approved" });
+    const { error } = await supabase.from("product_reviews").update({ admin_reply: replyText.trim(), status: "approved" }).eq("id", id);
     if (!error) { fetchReviews(); setReplyingTo(null); setReplyText(""); toast.success("Reply posted!"); }
   };
 

@@ -1,15 +1,15 @@
 import { useState, useEffect } from "react";
 import { Zap, Mail, Lock, ArrowLeft, Eye, EyeOff, User, CheckCircle, FileText, Clock, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { apiClient } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 
 function mapCustomer(user: any) {
   return {
     id: String(user.id),
-    email: user.email,
-    username: user.username || user.email.split("@")[0],
-    avatar: user.avatar,
+    email: user.email || "",
+    username: user.user_metadata?.username || user.email?.split("@")[0] || "",
+    avatar: user.user_metadata?.avatar || "",
   };
 }
 
@@ -78,7 +78,7 @@ export default function CustomerAuthModal({
   const handleSendOtp = async () => {
     if (!email.trim()) return;
     setLoading(true);
-    const { data, error } = await apiClient.post("/auth.php?action=send_otp", {
+    const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
     });
     if (error) {
@@ -95,7 +95,7 @@ export default function CustomerAuthModal({
   const handleResendOtp = async () => {
     if (resendCooldown > 0 || loading) return;
     setLoading(true);
-    const { data, error } = await apiClient.post("/auth.php?action=send_otp", {
+    const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
     });
     if (error) {
@@ -109,30 +109,41 @@ export default function CustomerAuthModal({
 
   const handleVerifyAndRegister = async () => {
     setLoading(true);
-    const { data, error } = await apiClient.post("/auth.php?action=verify_otp", {
+    const { data, error } = await supabase.auth.verifyOtp({
       email: email.trim(),
-      otp: otp.trim(),
-      password: password.trim(),
-      username: username || email.split("@")[0],
-      role: "customer",
+      token: otp.trim(),
+      type: 'email',
     });
     if (error) {
       toast.error("Invalid or expired code. Please try again.");
       setLoading(false);
       return;
     }
-    if (data && data.user && data.token) {
-      localStorage.setItem("token", data.token);
-      login(mapCustomer(data.user));
-      toast.success("Account created! Welcome to TRIP Mobility.");
-      onSuccess();
+    if (data && data.user) {
+      const { data: updateData, error: updateError } = await supabase.auth.updateUser({
+        password: password.trim(),
+        data: {
+          username: username || email.split("@")[0],
+          role: "customer"
+        }
+      });
+      if (updateError) {
+        toast.error(updateError.message);
+        setLoading(false);
+        return;
+      }
+      if (updateData && updateData.user) {
+        login(mapCustomer(updateData.user));
+        toast.success("Account created! Welcome to TRIP Mobility.");
+        onSuccess();
+      }
     }
     setLoading(false);
   };
 
   const handleLogin = async () => {
     setLoading(true);
-    const { data, error } = await apiClient.post("/auth.php?action=login", {
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password: password.trim(),
     });
@@ -141,8 +152,7 @@ export default function CustomerAuthModal({
       setLoading(false);
       return;
     }
-    if (data && data.user && data.token) {
-      localStorage.setItem("token", data.token);
+    if (data && data.user) {
       login(mapCustomer(data.user));
       toast.success("Welcome back!");
       onSuccess();
@@ -210,7 +220,7 @@ export default function CustomerAuthModal({
                 <button
                   onClick={async () => {
                     setLoading(true);
-                    const { data, error } = await apiClient.post("/auth.php?action=login", {
+                    const { data, error } = await supabase.auth.signInWithPassword({
                       email: "demo.customer@tripmobility.ph",
                       password: "DemoTrip2026!",
                     });
@@ -219,8 +229,7 @@ export default function CustomerAuthModal({
                       setMode("login");
                       setEmail("demo.customer@tripmobility.ph");
                       setPassword("DemoTrip2026!");
-                    } else if (data && data.user && data.token) {
-                      localStorage.setItem("token", data.token);
+                    } else if (data && data.user) {
                       login(mapCustomer(data.user));
                       toast.success("Demo account loaded! Welcome.");
                       onSuccess();
