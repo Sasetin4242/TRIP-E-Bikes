@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api-client";
 import { useAuth } from "@/hooks/useAuth";
+import NotificationBell from "@/components/features/NotificationBell";
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/admin" },
@@ -150,14 +151,7 @@ export default function AdminLayout() {
             />
           </div>
           <div className="flex items-center gap-3 ml-auto">
-            <Link to="/admin/leads" className="relative w-9 h-9 flex items-center justify-center rounded-lg border border-white/10 text-gray-400 hover:border-[#39FF14]/30 hover:text-[#39FF14] transition-all">
-              <Bell className="w-4 h-4" />
-              {newLeadsCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#39FF14] rounded-full flex items-center justify-center text-[9px] font-black text-[#0A0A0A]">
-                  {newLeadsCount > 9 ? "9+" : newLeadsCount}
-                </span>
-              )}
-            </Link>
+            <NotificationBell isAdmin={true} />
             <div className="w-9 h-9 rounded-full bg-[#39FF14]/20 border border-[#39FF14]/30 flex items-center justify-center font-orbitron font-bold text-sm text-[#39FF14]">
               {user?.username?.[0]?.toUpperCase() || "A"}
             </div>

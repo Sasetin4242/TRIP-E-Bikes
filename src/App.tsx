@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, useNavigate, useParams } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { useEffect } from "react";
 import { Toaster } from "sonner";
@@ -58,6 +58,22 @@ function PageTracker() {
   return null;
 }
 
+function ReferralHandler() {
+  const { code } = useParams<{ code: string }>();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (code) {
+      sessionStorage.setItem("referrer_code", code);
+      sessionStorage.setItem("referral_code", code);
+      toast.success("Referral code applied!");
+    }
+    navigate("/products", { replace: true });
+  }, [code, navigate]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <HelmetProvider>
@@ -90,6 +106,7 @@ export default function App() {
           <Route path="/blog/:slug" element={<BlogArticlePage />} />
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/compare" element={<ComparePage />} />
+          <Route path="/refer/:code" element={<ReferralHandler />} />
         </Route>
 
         {/* Customer Portal */}

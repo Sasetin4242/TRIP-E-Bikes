@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase";
 
 interface ContactMessage {
   id: string;
@@ -48,6 +49,13 @@ export default function AdminContacts() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [notesValue, setNotesValue] = useState("");
+
+  // Reply modal states
+  const [replyModalOpen, setReplyModalOpen] = useState(false);
+  const [replyingMessage, setReplyingMessage] = useState<ContactMessage | null>(null);
+  const [replySubject, setReplySubject] = useState("");
+  const [replyBody, setReplyBody] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
 
   const fetchMessages = useCallback(async () => {
     setLoading(true);
@@ -120,13 +128,45 @@ export default function AdminContacts() {
   };
 
   const handleReply = (msg: ContactMessage) => {
-    const subject = encodeURIComponent(`Re: Your TRIP Mobility Inquiry — ${msg.inquiry_type}`);
-    const body = encodeURIComponent(
-      `Hi ${msg.name},\n\nThank you for reaching out to TRIP Mobility!\n\nRegarding your inquiry: "${msg.message}"\n\n`
-    );
-    window.open(`mailto:${msg.email}?subject=${subject}&body=${body}`, "_blank");
-    // Auto-mark as replied
-    if (msg.status !== "replied") updateStatus(msg.id, "replied");
+    setReplyingMessage(msg);
+    setReplySubject(`Re: Your TRIP Mobility Inquiry — ${msg.inquiry_type}`);
+    setReplyBody(`Hi ${msg.name},\n\nThank you for reaching out to TRIP Mobility!\n\nRegarding your inquiry: "${msg.message}"\n\n`);
+    setReplyModalOpen(true);
+  };
+
+  const sendEmailReply = async () => {
+    if (!replyingMessage) return;
+    if (!replySubject.trim() || !replyBody.trim()) {
+      toast.error("Subject and body are required");
+      return;
+    }
+    setSendingReply(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("send-contact-reply", {
+        body: {
+          to: replyingMessage.email,
+          name: replyingMessage.name,
+          subject: replySubject,
+          message: replyBody,
+          inquiry_type: replyingMessage.inquiry_type,
+          contact_id: replyingMessage.id
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      toast.success("Reply email sent successfully!");
+      setReplyModalOpen(false);
+      await updateStatus(replyingMessage.id, "replied");
+    } catch (err: any) {
+      console.error("Failed to send reply:", err);
+      toast.error("Failed to send reply: " + (err.message || err));
+    } finally {
+      setSendingReply(false);
+    }
   };
 
   const filtered = messages.filter((m) => {
@@ -430,6 +470,86 @@ export default function AdminContacts() {
               </div>
             );
           })()}
+        </div>
+      )}
+      {/* ── Reply Modal ── */}
+      {replyModalOpen && replyingMessage && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+          <div className="relative w-full max-w-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden bg-[#0D0D0D]">
+            <div className="h-[2px] bg-gradient-to-r from-transparent via-[#39FF14] to-[#00FFFF]" />
+            <div className="flex items-center justify-between px-6 py-5 border-b border-white/8">
+              <div className="flex items-center gap-3">
+                <Reply className="w-5 h-5 text-[#39FF14]" />
+                <h2 className="font-orbitron font-bold text-lg text-white">Compose Email Reply</h2>
+              </div>
+              <button onClick={() => setReplyModalOpen(false)} className="w-9 h-9 flex items-center justify-center rounded-xl border border-white/10 text-gray-500 hover:text-white transition-all">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5 uppercase tracking-widest font-semibold">To</label>
+                <input
+                  type="text"
+                  disabled
+                  value={`${replyingMessage.name} <${replyingMessage.email}>`}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-400 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5 uppercase tracking-widest font-semibold">Subject</label>
+                <input
+                  type="text"
+                  value={replySubject}
+                  onChange={(e) => setReplySubject(e.target.value)}
+                  placeholder="Subject of the email"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#39FF14]/50 transition-all"
+                  style={{ background: "#1A1A1A" }}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5 uppercase tracking-widest font-semibold">Message Body</label>
+                <textarea
+                  rows={8}
+                  value={replyBody}
+                  onChange={(e) => setReplyBody(e.target.value)}
+                  placeholder="Write your email reply here..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#39FF14]/50 transition-all font-sans leading-relaxed resize-none"
+                  style={{ background: "#1A1A1A" }}
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-white/8 flex justify-end gap-3 bg-white/1">
+              <button
+                disabled={sendingReply}
+                onClick={() => setReplyModalOpen(false)}
+                className="btn-outline text-xs px-5 py-2.5"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={sendingReply}
+                onClick={sendEmailReply}
+                className="btn-primary text-xs px-6 py-2.5 flex items-center gap-2"
+              >
+                {sendingReply ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Reply className="w-4 h-4" />
+                    Send Reply
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,21 +1,72 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PRODUCTS, PRODUCT_CATEGORIES } from "@/constants/products";
 import ProductCard from "@/components/features/ProductCard";
 import QuoteModal from "@/components/features/QuoteModal";
 import SectionObserver from "@/components/features/SectionObserver";
 import ParticleField from "@/components/features/ParticleField";
 import { CompareBar, CompareModal } from "@/components/features/ProductComparison";
-import { SlidersHorizontal, GitCompare } from "lucide-react";
+import { SlidersHorizontal, GitCompare, Loader2 } from "lucide-react";
+import { apiClient } from "@/lib/api-client";
+import ProductQuiz from "@/components/features/ProductQuiz";
+import type { Product } from "@/types";
 
 export default function ProductsPage() {
   const [activeCategory, setActiveCategory] = useState("all");
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<string | undefined>();
   const [compareOpen, setCompareOpen] = useState(false);
+  
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadProducts = async () => {
+      try {
+        const { data, error } = await apiClient.get("products");
+        if (data && Array.isArray(data) && data.length > 0) {
+          const mapped: Product[] = data.map((p: any) => ({
+            id: p.product_key || String(p.id),
+            name: p.name,
+            tagline: p.tagline,
+            description: p.description,
+            price: Number(p.price),
+            category: p.category?.toLowerCase()?.includes("cargo") || p.category?.toLowerCase() === "delivery" ? "delivery" : p.category?.toLowerCase()?.includes("folding") ? "folding" : "mountain",
+            image: p.primary_image_url || "/placeholder.svg",
+            badge: p.badge || undefined,
+            specs: {
+              motor: p.specs?.motor || "",
+              battery: p.specs?.battery || "",
+              range: p.specs?.range || "",
+              topSpeed: p.specs?.topSpeed || p.specs?.chargingTime || "",
+              weight: p.specs?.weight || "",
+              payload: p.specs?.payload || "",
+              chargeTime: p.specs?.chargeTime || p.specs?.chargingTime || "",
+              frame: p.specs?.frame || "",
+              brakes: p.specs?.brakes || "",
+              tires: p.specs?.tires || "",
+            },
+            features: p.features || [],
+            useCases: p.use_cases || [],
+            colors: p.colors || [],
+            inStock: p.in_stock ?? true,
+          }));
+          setProducts(mapped);
+        } else {
+          setProducts(PRODUCTS);
+        }
+      } catch (err) {
+        console.error("Error fetching products:", err);
+        setProducts(PRODUCTS);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadProducts();
+  }, []);
 
   const filtered = activeCategory === "all"
-    ? PRODUCTS
-    : PRODUCTS.filter((p) => p.category === activeCategory);
+    ? products
+    : products.filter((p) => p.category === activeCategory);
 
   return (
     <div className="bg-[#0A0A0A] min-h-screen">
@@ -36,6 +87,11 @@ export default function ProductsPage() {
             Click the compare icon on any card to compare up to 3 models side by side
           </div>
         </div>
+      </section>
+
+      {/* AI Product Quiz */}
+      <section className="py-4 border-t border-b border-white/5 bg-[#0D0D0D]">
+        <ProductQuiz />
       </section>
 
       {/* Filter */}
@@ -63,16 +119,23 @@ export default function ProductsPage() {
       {/* Products */}
       <section className="py-16">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filtered.map((product, i) => (
-              <SectionObserver key={product.id} delay={i * 120}>
-                <ProductCard
-                  product={product}
-                  onQuote={() => { setSelectedProduct(product.name); setQuoteOpen(true); }}
-                />
-              </SectionObserver>
-            ))}
-          </div>
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <Loader2 className="w-10 h-10 text-[#39FF14] animate-spin mb-4" />
+              <p className="text-gray-500 text-sm">Loading electric bike fleet...</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {filtered.map((product, i) => (
+                <SectionObserver key={product.id} delay={i * 120}>
+                  <ProductCard
+                    product={product}
+                    onQuote={() => { setSelectedProduct(product.name); setQuoteOpen(true); }}
+                  />
+                </SectionObserver>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -90,7 +153,7 @@ export default function ProductsPage() {
                 <thead>
                   <tr className="border-b border-white/10">
                     <th className="text-left py-4 px-4 text-xs text-gray-500 uppercase tracking-wide font-medium">Spec</th>
-                    {PRODUCTS.map((p) => (
+                    {(products.length > 0 ? products : PRODUCTS).map((p) => (
                       <th key={p.id} className="text-center py-4 px-4">
                         <p className="font-orbitron font-bold text-sm text-white">{p.name}</p>
                         <p className="text-xs text-[#39FF14] font-semibold mt-1">₱{p.price.toLocaleString()}</p>
@@ -112,7 +175,7 @@ export default function ProductsPage() {
                   ].map((row, i) => (
                     <tr key={row.key} className={`border-b border-white/5 ${i % 2 === 0 ? "bg-white/1" : ""}`}>
                       <td className="py-4 px-4 text-sm text-gray-500 font-medium">{row.label}</td>
-                      {PRODUCTS.map((p) => (
+                      {(products.length > 0 ? products : PRODUCTS).map((p) => (
                         <td key={p.id} className="py-4 px-4 text-center text-sm text-gray-300">
                           {p.specs[row.key as keyof typeof p.specs]}
                         </td>

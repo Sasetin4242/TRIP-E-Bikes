@@ -5,7 +5,7 @@ import {
   Plus, Eye, Package, Phone, Mail, RefreshCw,
   TrendingUp, Loader2, X, AlertCircle, User, Calendar,
   Star, Shield, BarChart3, ArrowRight, Gift, GitCompare,
-  CheckSquare, Download
+  CheckSquare, Download, Copy
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api-client";
@@ -13,6 +13,8 @@ import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { PRODUCTS } from "@/constants/products";
 import LoyaltyDashboard from "@/components/features/LoyaltyDashboard";
 import NotificationBell from "@/components/features/NotificationBell";
+import CryptoJS from "crypto-js";
+import { supabase } from "@/lib/supabase";
 
 interface Quotation {
   id: string;
@@ -51,6 +53,7 @@ const ACCOUNT_BENEFITS = [
 const PORTAL_TABS = [
   { id: "quotes", label: "My Quotes", icon: FileText },
   { id: "loyalty", label: "Rewards & Points", icon: Gift },
+  { id: "referral", label: "Referral Program", icon: User },
 ];
 
 export default function CustomerDashboard() {
@@ -64,6 +67,41 @@ export default function CustomerDashboard() {
   const [activeTab, setActiveTab] = useState("quotes");
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [showCompare, setShowCompare] = useState(false);
+
+  // Referral states
+  const [referralPoints, setReferralPoints] = useState<number>(0);
+  const [referralCount, setReferralCount] = useState<number>(0);
+  const [referralLoading, setReferralLoading] = useState<boolean>(false);
+  const [copiedCode, setCopiedCode] = useState<boolean>(false);
+
+  const hashedCode = customer
+    ? "REF-" + CryptoJS.SHA256(customer.id).toString(CryptoJS.enc.Hex).substring(0, 8).toUpperCase()
+    : "";
+
+  useEffect(() => {
+    const fetchReferralStats = async () => {
+      if (!customer) return;
+      try {
+        setReferralLoading(true);
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("referral_points, referral_count")
+          .eq("id", customer.id)
+          .single();
+        if (data) {
+          setReferralPoints(data.referral_points || 0);
+          setReferralCount(data.referral_count || 0);
+        }
+      } catch (err) {
+        console.error("Error fetching referral stats:", err);
+      } finally {
+        setReferralLoading(false);
+      }
+    };
+    if (activeTab === "referral") {
+      fetchReferralStats();
+    }
+  }, [activeTab, customer]);
 
   const fetchQuotations = useCallback(async (silent = false) => {
     if (!customer) return;
@@ -203,6 +241,88 @@ export default function CustomerDashboard() {
             </button>
           ))}
         </div>
+
+        {/* ── Referral Tab ── */}
+        {activeTab === "referral" && (
+          <div className="space-y-8">
+            <div className="glass rounded-2xl border border-[#39FF14]/20 p-6 overflow-hidden relative">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-[#39FF14]/5 rounded-full blur-3xl pointer-events-none" />
+              <div className="relative flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                <div className="w-16 h-16 rounded-2xl bg-[#39FF14]/10 border border-[#39FF14]/20 flex items-center justify-center">
+                  <Gift className="w-8 h-8 text-[#39FF14]" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Referral Rewards</p>
+                  <h2 className="font-orbitron font-bold text-xl text-white">Share the Ride, Get Rewarded</h2>
+                  <p className="text-sm text-gray-400 mt-1 max-w-lg">
+                    Invite friends to get quotes and purchase a TRIP E-bike. For every successful referral, you both earn bonus rewards points redeemable for free service, accessories, or discounts.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="md:col-span-2 glass rounded-2xl border border-white/8 p-6 flex flex-col justify-between space-y-4">
+                <div>
+                  <h3 className="font-semibold text-white text-sm">Your Exclusive Referral Link</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Share this link. When they visit, their quote modal will automatically apply your code.</p>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 px-4 py-3 rounded-xl border border-white/10 bg-white/5 font-mono text-[#39FF14] font-bold tracking-wider text-xs md:text-sm overflow-x-auto whitespace-nowrap">
+                    {window.location.origin}/refer/{hashedCode}
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/refer/${hashedCode}`);
+                      setCopiedCode(true);
+                      setTimeout(() => setCopiedCode(false), 2000);
+                      toast.success("Referral link copied!");
+                    }}
+                    className={`px-5 py-3 rounded-xl border font-semibold text-sm transition-all flex items-center gap-2 whitespace-nowrap ${
+                      copiedCode
+                        ? "bg-[#39FF14]/20 border-[#39FF14]/40 text-[#39FF14]"
+                        : "glass border-white/10 text-gray-300 hover:text-white hover:border-[#39FF14]/30"
+                    }`}
+                  >
+                    {copiedCode ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    {copiedCode ? "Copied" : "Copy Link"}
+                  </button>
+                </div>
+
+                <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs text-gray-500">
+                  <span>Referral Code: <strong className="font-mono text-[#39FF14]">{hashedCode}</strong></span>
+                </div>
+              </div>
+
+              <div className="glass rounded-2xl border border-white/8 p-6 flex flex-col justify-between space-y-4">
+                <div>
+                  <h3 className="font-semibold text-white text-sm">Your Referral Stats</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Performance update</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-3 rounded-xl bg-white/3 border border-white/5">
+                    {referralLoading ? (
+                      <Loader2 className="w-5 h-5 text-[#39FF14] animate-spin mx-auto my-1" />
+                    ) : (
+                      <p className="font-orbitron font-bold text-2xl text-white">{referralCount}</p>
+                    )}
+                    <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider font-semibold">Total Referrals</p>
+                  </div>
+                  <div className="text-center p-3 rounded-xl bg-white/3 border border-white/5">
+                    {referralLoading ? (
+                      <Loader2 className="w-5 h-5 text-[#39FF14] animate-spin mx-auto my-1" />
+                    ) : (
+                      <p className="font-orbitron font-bold text-2xl text-[#39FF14]">{referralPoints}</p>
+                    )}
+                    <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider font-semibold">Points Earned</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Loyalty Tab ── */}
         {activeTab === "loyalty" && <LoyaltyDashboard />}

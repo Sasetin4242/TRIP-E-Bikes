@@ -10,6 +10,8 @@ import {
 import { PRODUCTS } from "@/constants/products";
 import QuoteModal from "@/components/features/QuoteModal";
 import SectionObserver from "@/components/features/SectionObserver";
+import { apiClient } from "@/lib/api-client";
+import type { Product } from "@/types";
 
 const BikeViewer3D = lazy(() => import("@/components/features/BikeViewer3D"));
 
@@ -24,11 +26,78 @@ const FAQ_ITEMS = [
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const product = PRODUCTS.find((p) => p.id === id);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"3d" | "features" | "specs" | "usecases">("3d");
   const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchProductData = async () => {
+      try {
+        setLoading(true);
+        const { data } = await apiClient.get("products");
+        if (data && Array.isArray(data) && data.length > 0) {
+          const mapped: Product[] = data.map((p: any) => ({
+            id: p.product_key || String(p.id),
+            name: p.name,
+            tagline: p.tagline,
+            description: p.description,
+            price: Number(p.price),
+            category: p.category?.toLowerCase()?.includes("cargo") || p.category?.toLowerCase() === "delivery" ? "delivery" : p.category?.toLowerCase()?.includes("folding") ? "folding" : "mountain",
+            image: p.primary_image_url || "/placeholder.svg",
+            badge: p.badge || undefined,
+            specs: {
+              motor: p.specs?.motor || "",
+              battery: p.specs?.battery || "",
+              range: p.specs?.range || "",
+              topSpeed: p.specs?.topSpeed || p.specs?.chargingTime || "",
+              weight: p.specs?.weight || "",
+              payload: p.specs?.payload || "",
+              chargeTime: p.specs?.chargeTime || p.specs?.chargingTime || "",
+              frame: p.specs?.frame || "",
+              brakes: p.specs?.brakes || "",
+              tires: p.specs?.tires || "",
+            },
+            features: p.features || [],
+            useCases: p.use_cases || [],
+            colors: p.colors || [],
+            inStock: p.in_stock ?? true,
+          }));
+          const found = mapped.find((p) => p.id === id);
+          if (found) {
+            setProduct(found);
+            setRelatedProducts(mapped.filter((p) => p.id !== found.id));
+          } else {
+            const staticFound = PRODUCTS.find((p) => p.id === id);
+            if (staticFound) {
+              setProduct(staticFound);
+              setRelatedProducts(PRODUCTS.filter((p) => p.id !== id));
+            }
+          }
+        } else {
+          const staticFound = PRODUCTS.find((p) => p.id === id);
+          if (staticFound) {
+            setProduct(staticFound);
+            setRelatedProducts(PRODUCTS.filter((p) => p.id !== id));
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching product details:", err);
+        const staticFound = PRODUCTS.find((p) => p.id === id);
+        if (staticFound) {
+          setProduct(staticFound);
+          setRelatedProducts(PRODUCTS.filter((p) => p.id !== id));
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProductData();
+  }, [id]);
 
   useEffect(() => {
     if (product) {
@@ -36,9 +105,16 @@ export default function ProductDetailPage() {
     }
   }, [product?.id]);
 
-  if (!product) return <Navigate to="/products" replace />;
+  if (loading) {
+    return (
+      <div className="bg-[#0A0A0A] min-h-screen flex flex-col items-center justify-center">
+        <Loader2 className="w-10 h-10 text-[#39FF14] animate-spin mb-4" />
+        <p className="text-gray-500 text-sm font-medium">Loading product specifications...</p>
+      </div>
+    );
+  }
 
-  const relatedProducts = PRODUCTS.filter((p) => p.id !== product.id);
+  if (!product) return <Navigate to="/products" replace />;
 
   return (
     <div className="bg-[#0A0A0A] min-h-screen">

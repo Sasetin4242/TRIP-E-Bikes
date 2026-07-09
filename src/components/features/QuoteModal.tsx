@@ -67,6 +67,7 @@ export default function QuoteModal({ open, onClose, preselectedProduct }: QuoteM
     budget: "",
     contactMethod: "",
     notes: "",
+    referrer: sessionStorage.getItem("referrer_code") || sessionStorage.getItem("referral_code") || "",
   });
 
   // Auto-fill from customer account
@@ -87,13 +88,32 @@ export default function QuoteModal({ open, onClose, preselectedProduct }: QuoteM
   }, [preselectedProduct, open]);
 
   useEffect(() => {
+    if (open) {
+      const ref = sessionStorage.getItem("referrer_code") || sessionStorage.getItem("referral_code") || "";
+      setForm(f => ({ ...f, referrer: ref }));
+    }
+  }, [open]);
+
+  useEffect(() => {
     if (!open) {
       setTimeout(() => {
         setStep(0);
         setSubmitted(false);
         setLoading(false);
         setShowAuthModal(false);
-        setForm({ name: customer?.username || "", email: customer?.email || "", mobile: "", company: "", useType: "", product: preselectedProduct || "", quantity: 1, budget: "", contactMethod: "", notes: "" });
+        setForm({
+          name: customer?.username || "",
+          email: customer?.email || "",
+          mobile: "",
+          company: "",
+          useType: "",
+          product: preselectedProduct || "",
+          quantity: 1,
+          budget: "",
+          contactMethod: "",
+          notes: "",
+          referrer: sessionStorage.getItem("referrer_code") || sessionStorage.getItem("referral_code") || "",
+        });
       }, 300);
     }
   }, [open, customer, preselectedProduct]);
@@ -135,6 +155,7 @@ export default function QuoteModal({ open, onClose, preselectedProduct }: QuoteM
       contact_method: form.contactMethod,
       notes: form.notes || undefined,
       customer_id: customer?.id,
+      referrer_code: form.referrer || undefined,
     });
 
     if (error) {
@@ -340,6 +361,10 @@ export default function QuoteModal({ open, onClose, preselectedProduct }: QuoteM
                       <div className="sm:col-span-2">
                         <label className="block text-xs text-gray-400 mb-2 uppercase tracking-widest font-medium">Company <span className="text-gray-600">(optional)</span></label>
                         <input type="text" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} placeholder="Your company name" autoComplete="organization" className="w-full border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder-gray-600 focus:outline-none focus:border-[#39FF14]/50 transition-all text-sm" style={{ background: "#1C1C1C" }} />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs text-gray-400 mb-2 uppercase tracking-widest font-medium">Referrer Code <span className="text-gray-600">(optional)</span></label>
+                        <input type="text" value={form.referrer} onChange={(e) => setForm({ ...form, referrer: e.target.value })} placeholder="REF-XXXXXX or TRIP-XXXXXX" className="w-full border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder-gray-600 focus:outline-none focus:border-[#39FF14]/50 transition-all text-sm" style={{ background: "#1C1C1C" }} />
                       </div>
                     </div>
                     {!customer && (

@@ -1,20 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Bell, BellRing, X, CheckCircle, Gift, MessageSquare,
-  FileText, Info, Check, Trash2
+  Bell, BellRing, X, Gift, MessageSquare,
+  FileText, Info, Check, Trash2, Loader2
 } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
-interface CustomerNotification {
+interface NotificationData {
   id: string;
   type: string;
   title: string;
   body: string;
   read: boolean;
-  metadata: Record<string, any>;
+  metadata?: Record<string, any>;
   created_at: string;
-  expires_at: string;
+  expires_at?: string;
 }
 
 const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
@@ -24,31 +26,121 @@ const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: 
   info:            { icon: Info,          color: "text-gray-400",   bg: "bg-white/5" },
 };
 
-export default function NotificationBell() {
+interface NotificationBellProps {
+  isAdmin?: boolean;
+}
+
+export default function NotificationBell({ isAdmin = false }: NotificationBellProps) {
   const { customer } = useCustomerAuth();
-  const [notifications, setNotifications] = useState<CustomerNotification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationData[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const fetchNotifications = useCallback(async () => {
-    if (!customer) return;
-    const { data } = await apiClient.get(`/notifications.php?email=${customer.email}`);
-    if (data && Array.isArray(data)) {
-      setNotifications(data.map((n: any) => ({
-        ...n,
-        body: n.message,
-        type: n.type || "info",
-        metadata: n.metadata || {}
-      })));
-    }
-  }, [customer]);
+    if (isAdmin) {
+      // Fetch admin notifications directly from Supabase
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .order("created_at", { ascending: false });
 
+      if (error) {
+        console.error("Failed to fetch admin notifications:", error);
+        return;
+      }
+      if (data) {
+        setNotifications(data.map((n: any) => ({
+          id: String(n.id),
+          type: n.type || "info",
+          title: n.title || "Notification",
+          body: n.message || n.body || "",
+          read: !!n.read,
+          metadata: n.metadata || {},
+          created_at: n.created_at,
+        })));
+      }
+    } else {
+      // Fetch customer notifications from API
+      if (!customer) return;
+      const { data } = await apiClient.get(`/notifications.php?email=${customer.email}`);
+      if (data && Array.isArray(data)) {
+        setNotifications(data.map((n: any) => ({
+          id: String(n.id),
+          type: n.type || "info",
+          title: n.title || "Notification",
+          body: n.message || n.body || "",
+          read: !!n.read,
+          metadata: n.metadata || {},
+          created_at: n.created_at,
+          expires_at: n.expires_at,
+        })));
+      }
+    }
+  }, [customer, isAdmin]);
+
+  // Set up polling (for customer) or Postgres subscription (for admin)
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 15000);
-    return () => clearInterval(interval);
-  }, [fetchNotifications]);
+
+    if (isAdmin) {
+      // Real-time Postgres change subscription for admin
+      const channel = supabase
+        .channel("admin-notifications-realtime")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "notifications",
+          },
+          (payload) => {
+            if (payload.eventType === "INSERT") {
+              const newNotif = payload.new;
+              setNotifications((prev) => [
+                {
+                  id: String(newNotif.id),
+                  type: newNotif.type || "info",
+                  title: newNotif.title || "Notification",
+                  body: newNotif.message || newNotif.body || "",
+                  read: !!newNotif.read,
+                  metadata: newNotif.metadata || {},
+                  created_at: newNotif.created_at,
+                },
+                ...prev,
+              ]);
+              toast.info(`New Alert: ${newNotif.title || "New notification"}`);
+            } else if (payload.eventType === "UPDATE") {
+              const updatedNotif = payload.new;
+              setNotifications((prev) =>
+                prev.map((n) =>
+                  n.id === String(updatedNotif.id)
+                    ? {
+                        ...n,
+                        read: !!updatedNotif.read,
+                        title: updatedNotif.title || n.title,
+                        body: updatedNotif.message || updatedNotif.body || n.body,
+                      }
+                    : n
+                )
+              );
+            } else if (payload.eventType === "DELETE") {
+              const deletedNotif = payload.old;
+              setNotifications((prev) => prev.filter((n) => n.id !== String(deletedNotif.id)));
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } else {
+      // Standard polling for customer
+      const interval = setInterval(fetchNotifications, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [fetchNotifications, isAdmin]);
 
   // Close on outside click
   useEffect(() => {
@@ -61,27 +153,38 @@ export default function NotificationBell() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   const markRead = async (id: string) => {
-    await apiClient.put(`/notifications.php?id=${id}`, { read: true });
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    if (isAdmin) {
+      await supabase.from("notifications").update({ read: true }).eq("id", id);
+    } else {
+      await apiClient.put(`/notifications.php?id=${id}`, { read: true });
+    }
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   };
 
   const markAllRead = async () => {
-    if (!customer) return;
     setLoading(true);
-    const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
+    const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
     if (unreadIds.length > 0) {
-      await apiClient.post("/notifications.php?action=mark_all_read", { email: customer.email });
+      if (isAdmin) {
+        await supabase.from("notifications").update({ read: true }).in("id", unreadIds);
+      } else if (customer) {
+        await apiClient.post("/notifications.php?action=mark_all_read", { email: customer.email });
+      }
     }
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     setLoading(false);
   };
 
   const deleteNotification = async (id: string) => {
-    await apiClient.delete(`/notifications.php?id=${id}`);
-    setNotifications(prev => prev.filter(n => n.id !== id));
+    if (isAdmin) {
+      await supabase.from("notifications").delete().eq("id", id);
+    } else {
+      await apiClient.delete(`/notifications.php?id=${id}`);
+    }
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
   const formatTime = (iso: string) => {
@@ -97,13 +200,14 @@ export default function NotificationBell() {
     return `${diffDay}d ago`;
   };
 
-  if (!customer) return null;
+  // If not admin and no customer session, don't render
+  if (!isAdmin && !customer) return null;
 
   return (
     <div className="relative" ref={panelRef}>
       <button
         onClick={() => setOpen(!open)}
-        className="relative p-2 rounded-lg border border-white/10 text-gray-400 hover:text-white hover:border-white/20 transition-all"
+        className="relative p-2 rounded-lg border border-white/10 text-gray-400 hover:text-white hover:border-[#39FF14]/30 hover:bg-white/5 transition-all"
         aria-label="Notifications"
       >
         {unreadCount > 0 ? (
@@ -119,8 +223,10 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 z-[200] rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
-          style={{ background: "#0D0D0D" }}>
+        <div
+          className="absolute right-0 top-full mt-2 w-80 z-[200] rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
+          style={{ background: "#0D0D0D" }}
+        >
           <div className="h-[2px] bg-gradient-to-r from-transparent via-[#39FF14] to-[#00FFFF]" />
 
           {/* Header */}
@@ -141,10 +247,14 @@ export default function NotificationBell() {
                   disabled={loading}
                   className="text-[10px] text-gray-500 hover:text-[#39FF14] transition-colors flex items-center gap-1"
                 >
-                  <Check className="w-3 h-3" />Mark all read
+                  {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                  Mark all read
                 </button>
               )}
-              <button onClick={() => setOpen(false)} className="p-1 rounded-lg text-gray-600 hover:text-white transition-colors">
+              <button
+                onClick={() => setOpen(false)}
+                className="p-1 rounded-lg text-gray-600 hover:text-white transition-colors"
+              >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -156,7 +266,7 @@ export default function NotificationBell() {
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <Bell className="w-10 h-10 text-gray-700 mb-3" />
                 <p className="text-sm text-gray-500">No notifications yet</p>
-                <p className="text-xs text-gray-600 mt-1">We'll notify you when something important happens</p>
+                <p className="text-xs text-gray-600 mt-1">We'll notify you when updates occur</p>
               </div>
             ) : (
               notifications.map((notif) => {
@@ -166,7 +276,9 @@ export default function NotificationBell() {
                   <div
                     key={notif.id}
                     onClick={() => !notif.read && markRead(notif.id)}
-                    className={`flex items-start gap-3 px-4 py-3.5 border-b border-white/5 cursor-pointer transition-all hover:bg-white/3 group ${!notif.read ? "bg-white/2" : ""}`}
+                    className={`flex items-start gap-3 px-4 py-3.5 border-b border-white/5 cursor-pointer transition-all hover:bg-white/3 group ${
+                      !notif.read ? "bg-white/2" : ""
+                    }`}
                   >
                     <div className={`w-8 h-8 rounded-xl ${cfg.bg} flex items-center justify-center shrink-0 mt-0.5`}>
                       <Icon className={`w-4 h-4 ${cfg.color}`} />
@@ -177,7 +289,10 @@ export default function NotificationBell() {
                           {notif.title}
                         </p>
                         <button
-                          onClick={(e) => { e.stopPropagation(); deleteNotification(notif.id); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteNotification(notif.id);
+                          }}
                           className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all shrink-0"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -198,7 +313,7 @@ export default function NotificationBell() {
           </div>
 
           <div className="px-4 py-2.5 border-t border-white/8 text-center">
-            <p className="text-[10px] text-gray-600">Notifications expire after 30 days</p>
+            <p className="text-[10px] text-gray-600">Real-time alerts active</p>
           </div>
         </div>
       )}
