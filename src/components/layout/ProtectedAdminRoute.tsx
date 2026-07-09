@@ -20,6 +20,8 @@ export default function ProtectedAdminRoute() {
     );
   }
 
-  if (!user) return <Navigate to="/admin/login" replace />;
+  if (!user || (user.role !== "admin" && user.role !== "super_admin")) {
+    return <Navigate to="/admin/login" replace />;
+  }
   return <Outlet />;
 }
