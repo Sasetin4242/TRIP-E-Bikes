@@ -39,26 +39,31 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
 
   const fetchNotifications = useCallback(async () => {
     if (isAdmin) {
-      // Fetch admin notifications directly from Supabase
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("*")
-        .order("created_at", { ascending: false });
+      try {
+        const { data, error } = await supabase
+          .from("notifications")
+          .select("*")
+          .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error("Failed to fetch admin notifications:", error);
-        return;
-      }
-      if (data) {
-        setNotifications(data.map((n: any) => ({
-          id: String(n.id),
-          type: n.type || "info",
-          title: n.title || "Notification",
-          body: n.message || n.body || "",
-          read: !!n.read,
-          metadata: n.metadata || {},
-          created_at: n.created_at,
-        })));
+        if (error) {
+          if (error.code !== "42P01" && error.code !== "PGRST116" && error.code !== "PGRST204") {
+            console.error("Failed to fetch admin notifications:", error);
+          }
+          return;
+        }
+        if (data) {
+          setNotifications(data.map((n: any) => ({
+            id: String(n.id),
+            type: n.type || "info",
+            title: n.title || "Notification",
+            body: n.message || n.body || "",
+            read: !!n.read,
+            metadata: n.metadata || {},
+            created_at: n.created_at,
+          })));
+        }
+      } catch (e) {
+        console.warn("Notifications table may not exist —", e);
       }
     } else {
       // Fetch customer notifications from API
@@ -84,57 +89,63 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
     fetchNotifications();
 
     if (isAdmin) {
-      // Real-time Postgres change subscription for admin
-      const channel = supabase
-        .channel("admin-notifications-realtime")
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "notifications",
-          },
-          (payload) => {
-            if (payload.eventType === "INSERT") {
-              const newNotif = payload.new;
-              setNotifications((prev) => [
-                {
-                  id: String(newNotif.id),
-                  type: newNotif.type || "info",
-                  title: newNotif.title || "Notification",
-                  body: newNotif.message || newNotif.body || "",
-                  read: !!newNotif.read,
-                  metadata: newNotif.metadata || {},
-                  created_at: newNotif.created_at,
-                },
-                ...prev,
-              ]);
-              toast.info(`New Alert: ${newNotif.title || "New notification"}`);
-            } else if (payload.eventType === "UPDATE") {
-              const updatedNotif = payload.new;
-              setNotifications((prev) =>
-                prev.map((n) =>
-                  n.id === String(updatedNotif.id)
-                    ? {
-                        ...n,
-                        read: !!updatedNotif.read,
-                        title: updatedNotif.title || n.title,
-                        body: updatedNotif.message || updatedNotif.body || n.body,
-                      }
-                    : n
-                )
-              );
-            } else if (payload.eventType === "DELETE") {
-              const deletedNotif = payload.old;
-              setNotifications((prev) => prev.filter((n) => n.id !== String(deletedNotif.id)));
+      let channel: any;
+      try {
+        channel = supabase
+          .channel("admin-notifications-realtime")
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "notifications",
+            },
+            (payload) => {
+              if (payload.eventType === "INSERT") {
+                const newNotif = payload.new;
+                setNotifications((prev) => [
+                  {
+                    id: String(newNotif.id),
+                    type: newNotif.type || "info",
+                    title: newNotif.title || "Notification",
+                    body: newNotif.message || newNotif.body || "",
+                    read: !!newNotif.read,
+                    metadata: newNotif.metadata || {},
+                    created_at: newNotif.created_at,
+                  },
+                  ...prev,
+                ]);
+                toast.info(`New Alert: ${newNotif.title || "New notification"}`);
+              } else if (payload.eventType === "UPDATE") {
+                const updatedNotif = payload.new;
+                setNotifications((prev) =>
+                  prev.map((n) =>
+                    n.id === String(updatedNotif.id)
+                      ? {
+                          ...n,
+                          read: !!updatedNotif.read,
+                          title: updatedNotif.title || n.title,
+                          body: updatedNotif.message || updatedNotif.body || n.body,
+                        }
+                      : n
+                  )
+                );
+              } else if (payload.eventType === "DELETE") {
+                const deletedNotif = payload.old;
+                setNotifications((prev) => prev.filter((n) => n.id !== String(deletedNotif.id)));
+              }
             }
-          }
-        )
-        .subscribe();
+          )
+          .subscribe();
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
+        return () => {
+          supabase.removeChannel(channel);
+        };
+      } catch (e) {
+        console.warn("Realtime subscription for notifications not available —", e);
+      }
+      if (channel) return () => { supabase.removeChannel(channel); };
+
     } else {
       // Standard polling for customer
       const interval = setInterval(fetchNotifications, 15000);
@@ -156,11 +167,13 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const markRead = async (id: string) => {
-    if (isAdmin) {
-      await supabase.from("notifications").update({ read: true }).eq("id", id);
-    } else {
-      await apiClient.put(`/notifications.php?id=${id}`, { read: true });
-    }
+    try {
+      if (isAdmin) {
+        await supabase.from("notifications").update({ read: true }).eq("id", id);
+      } else {
+        await apiClient.put(`/notifications.php?id=${id}`, { read: true });
+      }
+    } catch (e) { /* table may not exist */ }
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   };
 
@@ -168,22 +181,26 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
     setLoading(true);
     const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
     if (unreadIds.length > 0) {
-      if (isAdmin) {
-        await supabase.from("notifications").update({ read: true }).in("id", unreadIds);
-      } else if (customer) {
-        await apiClient.post("/notifications.php?action=mark_all_read", { email: customer.email });
-      }
+      try {
+        if (isAdmin) {
+          await supabase.from("notifications").update({ read: true }).in("id", unreadIds);
+        } else if (customer) {
+          await apiClient.post("/notifications.php?action=mark_all_read", { email: customer.email });
+        }
+      } catch (e) { /* table may not exist */ }
     }
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     setLoading(false);
   };
 
   const deleteNotification = async (id: string) => {
-    if (isAdmin) {
-      await supabase.from("notifications").delete().eq("id", id);
-    } else {
-      await apiClient.delete(`/notifications.php?id=${id}`);
-    }
+    try {
+      if (isAdmin) {
+        await supabase.from("notifications").delete().eq("id", id);
+      } else {
+        await apiClient.delete(`/notifications.php?id=${id}`);
+      }
+    } catch (e) { /* table may not exist */ }
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
