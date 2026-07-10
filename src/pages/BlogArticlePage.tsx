@@ -259,7 +259,7 @@ export default function BlogArticlePage() {
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pb-6 border-b border-white/8">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#39FF14]/20 to-[#00FFFF]/10 border border-[#39FF14]/30 flex items-center justify-center font-bold text-[#39FF14] text-sm">
-                {post.author[0]?.toUpperCase()}
+{(post.author || "?")[0]?.toUpperCase()}
               </div>
               <div>
                 <p className="text-sm font-semibold text-white">{post.author}</p>

@@ -1,7 +1,28 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Zap, Facebook, Instagram, Youtube, Mail, Phone, MapPin } from "lucide-react";
+import { apiClient } from "@/lib/api-client";
 
 export default function Footer() {
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchLogo = async () => {
+      try {
+        const { data } = await apiClient.get("/settings.php");
+        if (data) {
+          const logoSetting = data.find((s: any) => s.key === "brand_logo");
+          if (logoSetting?.value) {
+            setLogoUrl(logoSetting.value);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load logo in footer", e);
+      }
+    };
+    fetchLogo();
+  }, []);
+
   return (
     <footer className="bg-[#080808] border-t border-white/5">
       {/* CTA Band */}
@@ -28,13 +49,19 @@ export default function Footer() {
           {/* Brand */}
           <div className="lg:col-span-2">
             <Link to="/" className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 flex items-center justify-center bg-[#39FF14]/10 rounded-lg border border-[#39FF14]/20">
-                <Zap className="w-6 h-6 text-[#39FF14]" fill="#39FF14" />
-              </div>
-              <div>
-                <span className="font-orbitron font-black text-xl text-white">TRIP</span>
-                <span className="block text-[9px] text-[#39FF14] tracking-[0.2em] font-medium -mt-1">MOBILITY</span>
-              </div>
+              {logoUrl ? (
+                <img src={logoUrl} alt="TRIP MOBILITY" className="h-10 object-contain" />
+              ) : (
+                <>
+                  <div className="w-10 h-10 flex items-center justify-center bg-[#39FF14]/10 rounded-lg border border-[#39FF14]/20">
+                    <Zap className="w-6 h-6 text-[#39FF14]" fill="#39FF14" />
+                  </div>
+                  <div>
+                    <span className="font-orbitron font-black text-xl text-white">TRIP</span>
+                    <span className="block text-[9px] text-[#39FF14] tracking-[0.2em] font-medium -mt-1">MOBILITY</span>
+                  </div>
+                </>
+              )}
             </Link>
             <p className="text-gray-400 text-sm leading-relaxed mb-6 max-w-xs">
               Philippines' leading premium electric bike brand. Delivering exceptional quality, competitive pricing, and unmatched after-sales support.

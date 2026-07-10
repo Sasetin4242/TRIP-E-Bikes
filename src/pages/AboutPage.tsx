@@ -155,7 +155,7 @@ export default function AboutPage() {
               <SectionObserver key={i} delay={i * 100}>
                 <div className="glass rounded-xl p-6 text-center border border-white/5 hover:border-[#39FF14]/20 transition-all">
                   <div className={`w-16 h-16 rounded-xl bg-gradient-to-br ${member.bg} mx-auto mb-4 flex items-center justify-center text-2xl font-bold text-white font-orbitron`}>
-                    {member.name[0]}
+                    {(member.name || "?")[0]}
                   </div>
                   <p className="font-bold text-white text-sm mb-1">{member.name}</p>
                   <p className="text-xs text-gray-500">{member.title}</p>

@@ -384,7 +384,7 @@ export default function AdminChat() {
                   <div className="flex items-start gap-3">
                     <div className="relative shrink-0">
                       <div className="w-9 h-9 rounded-full bg-white/8 border border-white/10 flex items-center justify-center font-bold text-white text-sm">
-                        {s.customer_name[0]?.toUpperCase()}
+                        {(s.customer_name || "?")[0]?.toUpperCase()}
                       </div>
                       {(s.unread_count || 0) > 0 && (
                         <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#39FF14] text-[#0A0A0A] text-[9px] font-black flex items-center justify-center">{s.unread_count}</span>
@@ -430,7 +430,7 @@ export default function AdminChat() {
               <div className="flex items-center gap-4 px-5 py-4 border-b border-white/8 bg-white/2 shrink-0">
                 <div className="relative">
                   <div className="w-10 h-10 rounded-full bg-white/8 border border-white/10 flex items-center justify-center font-bold text-white text-sm">
-                    {selected.customer_name[0]?.toUpperCase()}
+                    {(selected.customer_name || "?")[0]?.toUpperCase()}
                   </div>
                   <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0D0D0D] ${STATUS_CONFIG[selected.status]?.dot || "bg-gray-500"}`} />
                 </div>
@@ -456,7 +456,7 @@ export default function AdminChat() {
                   <div key={msg.id} className={`flex gap-2.5 ${msg.sender_type === "agent" ? "flex-row-reverse" : "flex-row"}`}>
                     {msg.sender_type !== "agent" && (
                       <div className="w-8 h-8 rounded-full bg-white/8 border border-white/10 flex items-center justify-center text-xs font-bold text-white shrink-0 mt-auto">
-                        {msg.sender_type === "bot" ? "🤖" : msg.sender_name[0]?.toUpperCase()}
+                        {msg.sender_type === "bot" ? "🤖" : (msg.sender_name || "?")[0]?.toUpperCase()}
                       </div>
                     )}
                     <div className={`max-w-[70%] rounded-xl px-4 py-3 ${

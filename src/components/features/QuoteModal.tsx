@@ -234,7 +234,7 @@ export default function QuoteModal({ open, onClose, preselectedProduct }: QuoteM
                 {customer ? (
                   <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#39FF14]/5 border border-[#39FF14]/20 mb-4">
                     <div className="w-6 h-6 rounded-full bg-[#39FF14]/15 flex items-center justify-center font-bold text-[#39FF14] text-xs">
-                      {customer.username[0].toUpperCase()}
+                      {(customer.username || "U")[0].toUpperCase()}
                     </div>
                     <p className="text-xs text-gray-300">Signed in as <span className="text-[#39FF14] font-semibold">{customer.email}</span></p>
                     <CheckCircle className="w-3.5 h-3.5 text-[#39FF14] ml-auto" />

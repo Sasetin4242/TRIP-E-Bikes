@@ -175,7 +175,7 @@ export default function AdminDashboard() {
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-[#39FF14]/10 flex items-center justify-center font-bold text-[#39FF14] text-xs border border-[#39FF14]/20">
-                          {lead.name[0]}
+                          {(lead.name || "?")[0]}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-white">{lead.name}</p>

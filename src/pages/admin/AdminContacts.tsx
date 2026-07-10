@@ -343,7 +343,7 @@ export default function AdminContacts() {
                     </div>
                     {/* Avatar */}
                     <div className="w-10 h-10 rounded-full bg-white/8 border border-white/10 flex items-center justify-center shrink-0 font-bold text-white text-sm">
-                      {msg.name[0].toUpperCase()}
+                      {(msg.name || "?")[0].toUpperCase()}
                     </div>
 
                     <div className="flex-1 min-w-0">
@@ -397,7 +397,7 @@ export default function AdminContacts() {
                   <div>
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-12 h-12 rounded-full bg-white/8 border border-white/10 flex items-center justify-center font-bold text-white text-lg">
-                        {selected.name[0].toUpperCase()}
+                        {(selected.name || "?")[0].toUpperCase()}
                       </div>
                       <div>
                         <p className="font-semibold text-white">{selected.name}</p>

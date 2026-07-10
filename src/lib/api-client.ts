@@ -24,20 +24,30 @@ async function request<T = any>(
     if (path.includes("settings")) {
       if (method === "GET") {
         const { data, error } = await supabase.from("system_settings").select("*");
-        if (error) throw error;
-        responseData = data?.map((s: any) => ({
-          key: s.setting_key,
-          value: s.setting_value === "true" || s.setting_value === true || s.setting_value === "1" ? true : (s.setting_value === "false" || s.setting_value === false || s.setting_value === "0" ? false : s.setting_value)
-        }));
+        if (!error && data) {
+          responseData = data?.map((s: any) => ({
+            key: s.key,
+            value: s.value === "true" || s.value === true || s.value === "1" ? true : (s.value === "false" || s.value === false || s.value === "0" ? false : s.value),
+            label: s.label,
+            description: s.description
+          }));
+        }
       } else if (method === "POST" || method === "PUT") {
-        const { error } = await supabase.from("system_settings").upsert(
-          Object.entries(body).map(([key, val]) => ({
-            setting_key: key,
-            setting_value: String(val)
-          }))
-        );
-        if (error) throw error;
-        responseData = { status: "success" };
+        let upsertData: any[] = [];
+        if (params.key) {
+          const val = body.value !== undefined ? body.value : body;
+          upsertData = [{
+            key: params.key,
+            value: String(val)
+          }];
+        } else {
+          upsertData = Object.entries(body).map(([k, v]) => ({
+            key: k,
+            value: String(v)
+          }));
+        }
+        const { error } = await supabase.from("system_settings").upsert(upsertData);
+        if (!error) responseData = { status: "success" };
       }
     } else if (path.includes("products")) {
       if (method === "GET") {

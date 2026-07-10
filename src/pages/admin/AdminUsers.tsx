@@ -68,7 +68,7 @@ export default function AdminUsers() {
             return (
               <div key={user.id} className="glass rounded-xl border border-white/5 hover:border-white/10 transition-all p-5 flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#39FF14]/20 to-[#00FFFF]/10 flex items-center justify-center font-orbitron font-bold text-lg text-[#39FF14] shrink-0">
-                  {user.name[0]}
+                  {(user.name || "?")[0]}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">

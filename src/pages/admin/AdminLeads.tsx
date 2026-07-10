@@ -224,7 +224,7 @@ export default function AdminLeads() {
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-3">
                             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#39FF14]/20 to-[#00FFFF]/10 flex items-center justify-center text-[#39FF14] text-xs font-bold shrink-0 border border-[#39FF14]/20">
-                              {lead.name[0]}
+                              {(lead.name || "?")[0]}
                             </div>
                             <div>
                               <p className="text-sm font-semibold text-white">{lead.name}</p>
@@ -300,7 +300,7 @@ export default function AdminLeads() {
                           >
                             <div className="flex items-center gap-2 mb-2">
                               <div className="w-6 h-6 rounded-full bg-[#39FF14]/10 flex items-center justify-center text-[#39FF14] text-xs font-bold">
-                                {lead.name[0]}
+                                {(lead.name || "?")[0]}
                               </div>
                               <p className="text-sm font-medium text-white truncate">{lead.name}</p>
                             </div>

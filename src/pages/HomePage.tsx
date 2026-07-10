@@ -104,7 +104,7 @@ export default function HomePage() {
             RIDE THE{" "}
             <span className="gradient-text">FUTURE.</span>
             <br />
-            OWN THE ROAD.
+            A NEW KIND OF TRIP.
           </h1>
 
           <p className="text-gray-400 text-lg sm:text-xl max-w-2xl mx-auto mb-10 leading-relaxed animate-fade-up">

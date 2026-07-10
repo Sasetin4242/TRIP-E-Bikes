@@ -28,6 +28,24 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { customer, logout } = useCustomerAuth();
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchLogo = async () => {
+      try {
+        const { data } = await apiClient.get("/settings.php");
+        if (data) {
+          const logoSetting = data.find((s: any) => s.key === "brand_logo");
+          if (logoSetting?.value) {
+            setLogoUrl(logoSetting.value);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load logo", e);
+      }
+    };
+    fetchLogo();
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -63,14 +81,20 @@ export default function Navbar() {
           <div className="flex items-center justify-between h-20">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-3 group">
-              <div className="relative w-10 h-10 flex items-center justify-center">
-                <div className="absolute inset-0 bg-[#39FF14]/20 rounded-lg animate-glow-pulse" />
-                <Zap className="w-6 h-6 text-[#39FF14] relative z-10" fill="#39FF14" />
-              </div>
-              <div>
-                <span className="font-orbitron font-black text-xl text-white tracking-tight group-hover:text-[#39FF14] transition-colors">TRIP</span>
-                <span className="block text-[9px] text-[#39FF14] tracking-[0.2em] font-medium -mt-1">MOBILITY</span>
-              </div>
+              {logoUrl ? (
+                <img src={logoUrl} alt="TRIP MOBILITY" className="h-10 object-contain" />
+              ) : (
+                <>
+                  <div className="relative w-10 h-10 flex items-center justify-center">
+                    <div className="absolute inset-0 bg-[#39FF14]/20 rounded-lg animate-glow-pulse" />
+                    <Zap className="w-6 h-6 text-[#39FF14] relative z-10" fill="#39FF14" />
+                  </div>
+                  <div>
+                    <span className="font-orbitron font-black text-xl text-white tracking-tight group-hover:text-[#39FF14] transition-colors">TRIP</span>
+                    <span className="block text-[9px] text-[#39FF14] tracking-[0.2em] font-medium -mt-1">MOBILITY</span>
+                  </div>
+                </>
+              )}
             </Link>
 
             {/* Desktop Nav */}
@@ -108,7 +132,7 @@ export default function Navbar() {
                     onClick={() => setAccountOpen(!accountOpen)}
                     className="w-9 h-9 rounded-full bg-gradient-to-br from-[#39FF14]/20 to-[#00FFFF]/10 border border-[#39FF14]/30 hover:border-[#39FF14]/60 transition-all flex items-center justify-center font-bold text-[#39FF14] text-sm hover:scale-105"
                   >
-                    {customer.username[0].toUpperCase()}
+                    {(customer.username || "U")[0].toUpperCase()}
                   </button>
 
                   {accountOpen && (
@@ -117,7 +141,7 @@ export default function Navbar() {
                       <div className="px-4 py-3.5 border-b border-white/5 bg-gradient-to-r from-[#39FF14]/5 to-transparent">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#39FF14]/20 to-[#00FFFF]/10 border border-[#39FF14]/30 flex items-center justify-center font-bold text-[#39FF14] text-sm">
-                            {customer.username[0].toUpperCase()}
+                            {(customer.username || "U")[0].toUpperCase()}
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-white truncate">{customer.username}</p>
@@ -183,7 +207,7 @@ export default function Navbar() {
                   {/* Mobile account info */}
                   <div className="flex items-center gap-3 py-2 border-b border-white/5">
                     <div className="w-8 h-8 rounded-full bg-[#39FF14]/10 border border-[#39FF14]/20 flex items-center justify-center font-bold text-[#39FF14] text-sm">
-                      {customer.username[0].toUpperCase()}
+                      {(customer.username || "U")[0].toUpperCase()}
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-white">{customer.username}</p>

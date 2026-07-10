@@ -308,7 +308,7 @@ export default function AdminAppointments() {
                 {/* Customer info */}
                 <div className="space-y-2">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-full bg-white/8 border border-white/10 flex items-center justify-center font-bold text-white">{selected.name[0].toUpperCase()}</div>
+                    <div className="w-10 h-10 rounded-full bg-white/8 border border-white/10 flex items-center justify-center font-bold text-white">{(selected.name || "?")[0].toUpperCase()}</div>
                     <div>
                       <p className="font-semibold text-white text-sm">{selected.name}</p>
                       <p className="text-xs text-[#39FF14]">{selected.service_type}</p>

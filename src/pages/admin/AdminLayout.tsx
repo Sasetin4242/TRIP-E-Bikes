@@ -75,7 +75,7 @@ export default function AdminLayout() {
         {sidebarOpen && user && (
           <div className="px-4 py-3 border-b border-white/5 flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-[#39FF14]/10 border border-[#39FF14]/20 flex items-center justify-center font-bold text-[#39FF14] text-sm shrink-0">
-              {user.username[0].toUpperCase()}
+              {(user.username || "A")[0].toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-white truncate">{user.username}</p>
