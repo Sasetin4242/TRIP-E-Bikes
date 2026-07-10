@@ -58,13 +58,14 @@ export default function LiveChat() {
     supabase
       .from("system_settings")
       .select("*")
-      .eq("setting_key", "chat_enabled")
+      .eq("key", "chat_enabled")
       .single()
-      .then(({ data }) => {
-        if (data) {
-          setChatEnabled(data.setting_value === "true" || data.setting_value === true || data.setting_value === "1");
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setChatEnabled(data.value === "true" || data.value === true || data.value === "1");
         }
-      });
+      })
+      .catch(() => {});
   }, []);
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -338,7 +339,7 @@ export default function LiveChat() {
                     )}
                     {customer && (
                       <div className="flex items-center gap-2 px-3 py-2.5 bg-[#39FF14]/5 border border-[#39FF14]/15 rounded-xl mb-4 w-full">
-                        <div className="w-7 h-7 rounded-full bg-[#39FF14]/15 flex items-center justify-center font-bold text-[#39FF14] text-xs">{customer.username[0].toUpperCase()}</div>
+                        <div className="w-7 h-7 rounded-full bg-[#39FF14]/15 flex items-center justify-center font-bold text-[#39FF14] text-xs">{(customer.username || "U")[0].toUpperCase()}</div>
                         <div className="text-left">
                           <p className="text-xs text-white font-semibold">{customer.username}</p>
                           <p className="text-[10px] text-gray-500">Logged in · Priority support</p>
@@ -362,7 +363,7 @@ export default function LiveChat() {
                         <div key={msg.id} className={`flex gap-2 ${isCustomer ? "flex-row-reverse" : "flex-row"} ${!showAvatar ? (isCustomer ? "pr-10" : "pl-10") : ""}`}>
                           {!isCustomer && showAvatar && (
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-auto ${isBot ? "bg-[#39FF14]/10 border border-[#39FF14]/20 text-[#39FF14]" : "bg-white/8 border border-white/15 text-white"}`}>
-                              {isBot ? <Bot className="w-4 h-4" /> : msg.sender_name[0]?.toUpperCase()}
+                              {isBot ? <Bot className="w-4 h-4" /> : (msg.sender_name || "?")[0]?.toUpperCase()}
                             </div>
                           )}
                           <div className="max-w-[78%] space-y-1">
