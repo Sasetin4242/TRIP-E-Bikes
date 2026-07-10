@@ -90,168 +90,61 @@ export default function BikeAssemblyAnimation() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-          {/* Left: Bike assembly visual */}
+          {/* Left: E-Bike Detail Video Player */}
           <div className="relative">
-            {/* SVG Bike Silhouette */}
-            <div className="relative w-full aspect-[4/3] flex items-center justify-center">
-              {/* Glow orb */}
-              <div
-                className="absolute w-64 h-64 rounded-full blur-[80px] transition-all duration-1000"
-                style={{
-                  background: active ? "radial-gradient(circle, rgba(57,255,20,0.15), transparent)" : "transparent",
-                }}
+            <div className="glass rounded-2xl border border-white/10 overflow-hidden relative group aspect-[16/9] bg-black shadow-2xl">
+              {/* HTML5 Video Player */}
+              <video
+                src="https://assets.mixkit.co/videos/preview/mixkit-man-riding-an-electric-bicycle-along-a-street-41804-large.mp4"
+                className="w-full h-full object-cover"
+                loop
+                muted
+                autoPlay
+                playsInline
               />
+              {/* HUD Control Overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 flex flex-col justify-between p-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <div className="flex items-center justify-between">
+                  <span className="px-3 py-1 text-[10px] uppercase font-orbitron tracking-widest bg-[#39FF14]/20 border border-[#39FF14]/30 rounded-full text-[#39FF14] animate-pulse">
+                    LIVE DEMO
+                  </span>
+                  <span className="text-xs text-white/60 font-medium">TRIP Cargo Pro Specs</span>
+                </div>
 
-              {/* SVG bike */}
-              <svg
-                viewBox="0 0 400 280"
-                className="w-full max-w-md relative z-10"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                {/* Rear wheel */}
-                <g
-                  className="transition-all duration-700"
-                  style={{
-                    opacity: visibleParts.has("wheels") ? 1 : 0,
-                    transform: visibleParts.has("wheels") ? "translateY(0)" : "translateY(30px)",
-                  }}
-                >
-                  <circle cx="100" cy="195" r="60" stroke="#00FFFF" strokeWidth="8" opacity="0.8" />
-                  <circle cx="100" cy="195" r="45" stroke="#00FFFF" strokeWidth="2" opacity="0.3" />
-                  <circle cx="100" cy="195" r="8" fill="#00FFFF" opacity="0.9" />
-                  {[0, 60, 120, 180, 240, 300].map((angle) => (
-                    <line
-                      key={angle}
-                      x1="100" y1="195"
-                      x2={100 + 50 * Math.cos((angle * Math.PI) / 180)}
-                      y2={195 + 50 * Math.sin((angle * Math.PI) / 180)}
-                      stroke="#00FFFF"
-                      strokeWidth="1.5"
-                      opacity="0.4"
-                    />
-                  ))}
-                </g>
+                {/* Central Play Button */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
+                  <div className="w-14 h-14 rounded-full bg-[#39FF14]/15 border border-[#39FF14]/40 flex items-center justify-center hover:scale-105 transition-transform cursor-pointer">
+                    <span className="w-0 h-0 border-t-8 border-t-transparent border-b-8 border-b-transparent border-l-[12px] border-l-[#39FF14] ml-1" />
+                  </div>
+                </div>
 
-                {/* Front wheel */}
-                <g
-                  className="transition-all duration-700"
-                  style={{
-                    opacity: visibleParts.has("wheels") ? 1 : 0,
-                    transform: visibleParts.has("wheels") ? "translateY(0)" : "translateY(30px)",
-                    transitionDelay: "200ms",
-                  }}
-                >
-                  <circle cx="300" cy="195" r="60" stroke="#00FFFF" strokeWidth="8" opacity="0.8" />
-                  <circle cx="300" cy="195" r="45" stroke="#00FFFF" strokeWidth="2" opacity="0.3" />
-                  <circle cx="300" cy="195" r="8" fill="#00FFFF" opacity="0.9" />
-                  {[0, 60, 120, 180, 240, 300].map((angle) => (
-                    <line
-                      key={angle}
-                      x1="300" y1="195"
-                      x2={300 + 50 * Math.cos((angle * Math.PI) / 180)}
-                      y2={195 + 50 * Math.sin((angle * Math.PI) / 180)}
-                      stroke="#00FFFF"
-                      strokeWidth="1.5"
-                      opacity="0.4"
-                    />
-                  ))}
-                </g>
-
-                {/* Frame */}
-                <g
-                  className="transition-all duration-800"
-                  style={{
-                    opacity: visibleParts.has("frame") ? 1 : 0,
-                    transform: visibleParts.has("frame") ? "scale(1)" : "scale(0.9)",
-                    transformOrigin: "200px 140px",
-                  }}
-                >
-                  {/* Main triangle frame */}
-                  <path d="M100 195 L200 80 L300 195" stroke="#39FF14" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
-                  {/* Seat tube */}
-                  <path d="M200 80 L180 195" stroke="#39FF14" strokeWidth="5" strokeLinecap="round" opacity="0.7" />
-                  {/* Top tube */}
-                  <path d="M200 80 L280 100" stroke="#39FF14" strokeWidth="4" strokeLinecap="round" opacity="0.8" />
-                  {/* Fork */}
-                  <path d="M280 100 L300 195" stroke="#39FF14" strokeWidth="5" strokeLinecap="round" opacity="0.8" />
-                  {/* Chain stay */}
-                  <path d="M100 195 L180 195" stroke="#39FF14" strokeWidth="3" opacity="0.5" />
-                  {/* Glow effect */}
-                  <path d="M100 195 L200 80 L300 195" stroke="#39FF14" strokeWidth="2" strokeLinecap="round" opacity="0.3" filter="blur(3px)" />
-                </g>
-
-                {/* Battery */}
-                <g
-                  className="transition-all duration-700"
-                  style={{
-                    opacity: visibleParts.has("battery") ? 1 : 0,
-                    transform: visibleParts.has("battery") ? "translateX(0)" : "translateX(-20px)",
-                  }}
-                >
-                  <rect x="145" y="140" width="50" height="22" rx="4" fill="rgba(57,255,20,0.15)" stroke="#39FF14" strokeWidth="2" />
-                  <rect x="148" y="143" width="12" height="16" rx="2" fill="#39FF14" opacity="0.8" />
-                  <rect x="163" y="143" width="12" height="16" rx="2" fill="#39FF14" opacity="0.6" />
-                  <rect x="178" y="143" width="10" height="16" rx="2" fill="#39FF14" opacity="0.4" />
-                  <rect x="193" y="147" width="4" height="8" rx="2" fill="#39FF14" opacity="0.7" />
-                  <text x="170" y="178" textAnchor="middle" fill="#39FF14" fontSize="8" fontWeight="bold" opacity="0.8">48V 11.6Ah</text>
-                </g>
-
-                {/* Motor */}
-                <g
-                  className="transition-all duration-700"
-                  style={{
-                    opacity: visibleParts.has("motor") ? 1 : 0,
-                    transform: visibleParts.has("motor") ? "scale(1)" : "scale(0)",
-                    transformOrigin: "100px 195px",
-                  }}
-                >
-                  <circle cx="100" cy="195" r="16" fill="rgba(168,255,62,0.2)" stroke="#A8FF3E" strokeWidth="2" />
-                  <circle cx="100" cy="195" r="6" fill="#A8FF3E" />
-                  <text x="100" y="222" textAnchor="middle" fill="#A8FF3E" fontSize="7" fontWeight="bold">750W</text>
-                </g>
-
-                {/* Display */}
-                <g
-                  className="transition-all duration-700"
-                  style={{
-                    opacity: visibleParts.has("display") ? 1 : 0,
-                    transform: visibleParts.has("display") ? "translateY(0)" : "translateY(-15px)",
-                  }}
-                >
-                  <rect x="252" y="70" width="36" height="24" rx="4" fill="rgba(0,255,255,0.1)" stroke="#00FFFF" strokeWidth="1.5" />
-                  <rect x="256" y="74" width="28" height="16" rx="2" fill="rgba(0,255,255,0.15)" />
-                  <text x="270" y="85" textAnchor="middle" fill="#00FFFF" fontSize="7" fontWeight="bold">LCD</text>
-                </g>
-
-                {/* Seat */}
-                <g style={{ opacity: visibleParts.has("frame") ? 1 : 0 }}>
-                  <path d="M185 75 Q200 65 215 68 L210 80 Q200 72 190 78 Z" fill="rgba(57,255,20,0.3)" stroke="#39FF14" strokeWidth="1.5" />
-                </g>
-
-                {/* Handlebar */}
-                <g style={{ opacity: visibleParts.has("frame") ? 1 : 0 }}>
-                  <path d="M268 88 Q290 78 295 90" stroke="#39FF14" strokeWidth="3" fill="none" strokeLinecap="round" />
-                </g>
-              </svg>
+                {/* Bottom Timeline indicator */}
+                <div className="space-y-3">
+                  <div className="h-1 bg-white/20 rounded-full overflow-hidden relative cursor-pointer">
+                    <div className="h-full bg-[#39FF14] w-[45%]" />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-gray-400">
+                    <span>0:24 / 1:00</span>
+                    <span className="hover:text-[#39FF14] cursor-pointer">HD 1080p</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Assembly steps */}
-            <div className="flex flex-wrap gap-2 justify-center mt-4">
-              {BIKE_PARTS.map((part) => (
+            {/* Video Feature Quick Selector Tabs */}
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              {[
+                { label: "⚡ Assembly & Frame", desc: "Enterprise aerospace alloy" },
+                { label: "🔋 Battery Range", desc: "120km dual smart battery pack" },
+                { label: "⚙️ 750W Motor Test", desc: "High-torque hill climb test" },
+                { label: "📱 Smart Dashboard", desc: "LCD app navigation control" },
+              ].map((tab, i) => (
                 <div
-                  key={part.id}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all duration-500"
-                  style={{
-                    borderColor: visibleParts.has(part.id) ? part.color : "rgba(255,255,255,0.1)",
-                    color: visibleParts.has(part.id) ? part.color : "#4B5563",
-                    background: visibleParts.has(part.id) ? `${part.color}15` : "transparent",
-                  }}
+                  key={i}
+                  className={`p-3 glass rounded-xl border cursor-pointer hover:border-[#39FF14]/30 transition-all duration-300 ${i === 0 ? "bg-[#39FF14]/5 border-[#39FF14]/25" : "border-white/5"}`}
                 >
-                  {visibleParts.has(part.id) && (
-                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: part.color }} />
-                  )}
-                  {part.label}
+                  <p className={`text-xs font-semibold uppercase tracking-wider ${i === 0 ? "text-[#39FF14]" : "text-white"}`}>{tab.label}</p>
+                  <p className="text-[10px] text-gray-500 mt-1">{tab.desc}</p>
                 </div>
               ))}
             </div>
