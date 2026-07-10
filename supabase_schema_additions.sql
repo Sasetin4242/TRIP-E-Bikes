@@ -229,3 +229,26 @@ EXCEPTION
         RETURN FALSE;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- ----------------------------------------------------------------------------
+-- 5. Storage Buckets and Access Policies Configuration
+-- ----------------------------------------------------------------------------
+
+-- Create public 'brand-assets' storage bucket if it does not exist
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('brand-assets', 'brand-assets', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Policies for the brand-assets storage bucket objects
+CREATE POLICY "Allow public SELECT on brand-assets bucket" ON storage.objects
+    FOR SELECT TO public USING (bucket_id = 'brand-assets');
+
+CREATE POLICY "Allow authenticated users to INSERT objects into brand-assets" ON storage.objects
+    FOR INSERT TO authenticated WITH CHECK (bucket_id = 'brand-assets');
+
+CREATE POLICY "Allow authenticated users to UPDATE objects in brand-assets" ON storage.objects
+    FOR UPDATE TO authenticated WITH CHECK (bucket_id = 'brand-assets');
+
+CREATE POLICY "Allow authenticated users to DELETE objects from brand-assets" ON storage.objects
+    FOR DELETE TO authenticated USING (bucket_id = 'brand-assets');
