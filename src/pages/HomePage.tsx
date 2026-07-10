@@ -97,7 +97,7 @@ export default function HomePage() {
         <div className="relative z-10 max-w-7xl mx-auto px-6 pt-32 pb-24 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-[#39FF14]/30 bg-[#39FF14]/5 mb-8 animate-fade-up">
             <span className="w-2 h-2 rounded-full bg-[#39FF14] animate-pulse" />
-            <span className="text-xs text-[#39FF14] font-medium tracking-widest uppercase">Philippines' #1 Premium E-Bike Brand</span>
+            <span className="text-xs text-[#39FF14] font-medium tracking-widest">Philippines' #1 Premium E-Bike Brand</span>
           </div>
 
           <h1 className="font-orbitron font-black text-5xl sm:text-6xl lg:text-8xl text-white mb-6 leading-tight animate-fade-up">
