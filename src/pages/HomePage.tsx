@@ -201,7 +201,7 @@ export default function HomePage() {
                 desc: "Zoom past traffic with E-bikes. Arrive at your destination with ease.",
               },
             ].map((feature, i) => (
-              <SectionObserver key={i} delay={i * 80}>
+              <SectionObserver key={i} delay={i * 80} className="h-full">
                 <div className="glow-card group">
                   <div className="relative z-10 p-6 flex flex-col h-full">
                     <div className="w-12 h-12 rounded-xl bg-[#39FF14]/10 border border-[#39FF14]/20 flex items-center justify-center mb-4 group-hover:bg-[#39FF14]/20 transition-colors">
@@ -239,7 +239,7 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {PRODUCTS.map((product, i) => (
-              <SectionObserver key={product.id} delay={i * 150}>
+              <SectionObserver key={product.id} delay={i * 150} className="h-full">
                 <ProductCard
                   product={product}
                   onQuote={() => handleProductQuote(product.name)}
@@ -428,7 +428,7 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {MOCK_TESTIMONIALS.map((t, i) => (
-              <SectionObserver key={t.id} delay={i * 100}>
+              <SectionObserver key={t.id} delay={i * 100} className="h-full">
                 <div className="glass rounded-xl p-6 border border-white/5 hover:border-[#39FF14]/20 transition-all h-full flex flex-col">
                   <Quote className="w-6 h-6 text-[#39FF14]/40 mb-3" />
                   <p className="text-gray-300 text-sm leading-relaxed mb-6 flex-1">{t.review}</p>
@@ -466,7 +466,7 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {FINANCING_OPTIONS.map((option, i) => (
-              <SectionObserver key={option.id} delay={i * 120}>
+              <SectionObserver key={option.id} delay={i * 120} className="h-full">
                 <div
                   className={`rounded-2xl p-8 h-full flex flex-col transition-all duration-500 ${
                     option.highlight
