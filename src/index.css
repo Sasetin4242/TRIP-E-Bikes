@@ -269,3 +269,63 @@ select option {
     background: linear-gradient(180deg, transparent 0%, rgba(57, 255, 20, 0.02) 50%, transparent 100%);
   }
 }
+
+/* Animated Gradient Border Trail Card */
+.glow-card {
+  position: relative;
+  background: rgba(14, 14, 14, 0.6);
+  border-radius: 1rem;
+  z-index: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.glow-card::before {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    transparent 40%,
+    #39FF14 50%,
+    #00FFFF 60%,
+    transparent 70%,
+    transparent 100%
+  );
+  animation: rotate-border 4s linear infinite;
+  z-index: -2;
+  opacity: 0.15;
+  transition: opacity 0.5s ease;
+}
+
+.glow-card:hover::before {
+  opacity: 1;
+  animation-duration: 2.5s;
+}
+
+.glow-card::after {
+  content: "";
+  position: absolute;
+  inset: 1.5px;
+  background: #0E0E0E;
+  border-radius: calc(1rem - 1.5px);
+  z-index: -1;
+  transition: background-color 0.3s ease;
+}
+
+.glow-card:hover::after {
+  background: #0D0D0D;
+}
+
+@keyframes rotate-border {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+

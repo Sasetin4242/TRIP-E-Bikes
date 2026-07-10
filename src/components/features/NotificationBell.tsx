@@ -35,10 +35,12 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [tableExists, setTableExists] = useState(true);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const fetchNotifications = useCallback(async () => {
     if (isAdmin) {
+      if (!tableExists) return;
       try {
         const { data, error } = await supabase
           .from("notifications")
@@ -46,7 +48,9 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
           .order("created_at", { ascending: false });
 
         if (error) {
-          if (error.code !== "42P01" && error.code !== "PGRST116" && error.code !== "PGRST204") {
+          if (error.code === "42P01" || error.code === "PGRST116" || error.code === "PGRST204") {
+            setTableExists(false);
+          } else {
             console.error("Failed to fetch admin notifications:", error);
           }
           return;
@@ -63,7 +67,7 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
           })));
         }
       } catch (e) {
-        console.warn("Notifications table may not exist —", e);
+        setTableExists(false);
       }
     } else {
       // Fetch customer notifications from API
@@ -88,7 +92,7 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
   useEffect(() => {
     fetchNotifications();
 
-    if (isAdmin) {
+    if (isAdmin && tableExists) {
       let channel: any;
       try {
         channel = supabase
@@ -142,16 +146,15 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
           supabase.removeChannel(channel);
         };
       } catch (e) {
-        console.warn("Realtime subscription for notifications not available —", e);
+        setTableExists(false);
       }
       if (channel) return () => { supabase.removeChannel(channel); };
 
-    } else {
-      // Standard polling for customer
+    } else if (!isAdmin) {
       const interval = setInterval(fetchNotifications, 15000);
       return () => clearInterval(interval);
     }
-  }, [fetchNotifications, isAdmin]);
+  }, [fetchNotifications, isAdmin, tableExists]);
 
   // Close on outside click
   useEffect(() => {

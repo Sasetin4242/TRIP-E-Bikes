@@ -233,8 +233,8 @@ export default function AdminSystemSettings() {
       </div>
 
       {/* Tab Contents */}
-      {activeTab === "features" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {activeTab === "features" ? (
+        <div key="features" className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {featureSettings.map(setting => {
             const IconComp = SETTING_ICONS[setting.key] || Settings;
             const isEnabled = setting.value === true || setting.value === "true";
@@ -287,9 +287,7 @@ export default function AdminSystemSettings() {
             );
           })}
         </div>
-      )}
-
-      {activeTab === "appearance" && (
+      ) : activeTab === "appearance" ? (
         <div className="max-w-2xl glass rounded-2xl border border-white/5 p-8">
           <h2 className="font-orbitron font-bold text-lg text-white mb-6">Visual Style Configuration</h2>
           <div className="space-y-6">
@@ -356,10 +354,8 @@ export default function AdminSystemSettings() {
             </div>
           </div>
         </div>
-      )}
-
-      {activeTab === "brand" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      ) : (
+        <div key="brand" className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Logo Upload Card */}
           <div className="glass rounded-2xl border border-white/5 p-8 flex flex-col justify-between">
             <div>
@@ -370,7 +366,7 @@ export default function AdminSystemSettings() {
 
               {logoUrl ? (
                 <div className="mb-6 p-4 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center h-28 relative group">
-                  <img src={logoUrl} alt="Main Logo Preview" className="max-h-20 object-contain" />
+                  <img src={logoUrl} alt="Main Logo Preview" className="max-h-20 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   <div className="absolute inset-0 bg-black/60 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
                     <span className="text-[10px] uppercase font-bold text-[#39FF14]">Active URL Saved</span>
                   </div>
@@ -417,7 +413,7 @@ export default function AdminSystemSettings() {
 
               {faviconUrl ? (
                 <div className="mb-6 p-4 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center h-28 relative group">
-                  <img src={faviconUrl} alt="Favicon Preview" className="w-12 h-12 object-contain" />
+                  <img src={faviconUrl} alt="Favicon Preview" className="w-12 h-12 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   <div className="absolute inset-0 bg-black/60 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
                     <span className="text-[10px] uppercase font-bold text-[#39FF14]">Active URL Saved</span>
                   </div>
