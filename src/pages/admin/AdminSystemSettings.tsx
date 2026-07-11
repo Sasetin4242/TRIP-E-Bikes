@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Settings, Loader2, Save, ToggleLeft, ToggleRight, Shield, MessageCircle, Star, Gift, RefreshCw, Palette, Image as ImageIcon, Upload } from "lucide-react";
+import { Settings, Loader2, Save, ToggleLeft, ToggleRight, Shield, MessageCircle, Star, Gift, RefreshCw, Palette, Image as ImageIcon, Upload, Copy, Check, Eye, EyeOff, Link } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
@@ -31,7 +31,7 @@ export default function AdminSystemSettings() {
   const [settings, setSettings] = useState<SystemSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"features" | "appearance" | "brand">("features");
+  const [activeTab, setActiveTab] = useState<"features" | "appearance" | "brand" | "integrations">("features");
 
   // Appearance State
   const [brandColor, setBrandColor] = useState("#39FF14");
@@ -42,6 +42,11 @@ export default function AdminSystemSettings() {
   const [faviconUrl, setFaviconUrl] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
+
+  // Integrations State
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -60,6 +65,9 @@ export default function AdminSystemSettings() {
 
       const faviconSetting = data.find((s: any) => s.key === "brand_favicon");
       if (faviconSetting) setFaviconUrl(faviconSetting.value);
+
+      const webhookSecretSetting = data.find((s: any) => s.key === "resend_webhook_signing_secret");
+      if (webhookSecretSetting) setWebhookSecret(webhookSecretSetting.value);
     }
     setLoading(false);
   }, []);
@@ -165,6 +173,29 @@ export default function AdminSystemSettings() {
     }
   };
 
+  const handleSaveIntegrations = async () => {
+    setSaving("integrations");
+    try {
+      const { error } = await apiClient.put(`/settings.php?key=resend_webhook_signing_secret`, { value: webhookSecret });
+      if (error) {
+        toast.error("Failed to save integration settings: " + error.message);
+      } else {
+        toast.success("Integration settings saved successfully!");
+        setSettings(prev => {
+          const updated = [...prev];
+          const secretIdx = updated.findIndex(s => s.key === "resend_webhook_signing_secret");
+          if (secretIdx > -1) updated[secretIdx].value = webhookSecret;
+          else updated.push({ key: "resend_webhook_signing_secret", value: webhookSecret });
+          return updated;
+        });
+      }
+    } catch (e: any) {
+      toast.error("An error occurred: " + e.message);
+    } finally {
+      setSaving(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -229,6 +260,17 @@ export default function AdminSystemSettings() {
         >
           <ImageIcon className="w-4 h-4" />
           Brand Assets
+        </button>
+        <button
+          onClick={() => setActiveTab("integrations")}
+          className={`flex items-center gap-2 pb-4 text-sm font-semibold tracking-wide border-b-2 transition-all ${
+            activeTab === "integrations"
+              ? "border-[#39FF14] text-[#39FF14]"
+              : "border-transparent text-gray-500 hover:text-gray-300"
+          }`}
+        >
+          <Link className="w-4 h-4" />
+          Integrations
         </button>
       </div>
 
@@ -354,7 +396,7 @@ export default function AdminSystemSettings() {
             </div>
           </div>
         </div>
-      ) : (
+      ) : activeTab === "brand" ? (
         <div key="brand" className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Logo Upload Card */}
           <div className="glass rounded-2xl border border-white/5 p-8 flex flex-col justify-between">
@@ -447,6 +489,90 @@ export default function AdminSystemSettings() {
                   URL: {faviconUrl}
                 </p>
               )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div key="integrations" className="max-w-2xl glass rounded-2xl border border-white/5 p-8">
+          <h2 className="font-orbitron font-bold text-lg text-white mb-2">Integrations Configuration</h2>
+          <p className="text-xs text-gray-500 mb-6">Manage external developer services and webhooks.</p>
+          
+          <div className="space-y-6">
+            {/* Webhook Endpoint */}
+            <div className="p-4 rounded-xl border border-white/10 bg-white/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400">
+                  Resend Webhook Endpoint URL
+                </label>
+                <span className="text-[10px] text-[#39FF14] font-mono font-bold">POST</span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={`${import.meta.env.VITE_SUPABASE_URL || "https://ieijkjjyfgnnypfmieij.supabase.co"}/functions/v1/resend-webhook`}
+                  className="flex-1 bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-xs text-gray-400 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = `${import.meta.env.VITE_SUPABASE_URL || "https://ieijkjjyfgnnypfmieij.supabase.co"}/functions/v1/resend-webhook`;
+                    navigator.clipboard.writeText(url);
+                    setCopied(true);
+                    toast.success("Webhook URL copied to clipboard!");
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="px-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl flex items-center justify-center transition-all"
+                  title="Copy URL"
+                >
+                  {copied ? <Check className="w-4 h-4 text-[#39FF14]" /> : <Copy className="w-4 h-4 text-white" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-500">
+                Register this endpoint URL in your Resend Dashboard under <strong className="text-white">Webhooks</strong> to receive events.
+              </p>
+            </div>
+
+            {/* Signing Secret */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
+                Resend Webhook Signing Secret
+              </label>
+              <div className="relative">
+                <input
+                  type={showSecret ? "text" : "password"}
+                  value={webhookSecret}
+                  onChange={(e) => setWebhookSecret(e.target.value)}
+                  placeholder="whsec_..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-4 pr-12 py-3 text-sm text-white focus:outline-none focus:border-[#39FF14] transition-all font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSecret(!showSecret)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
+                >
+                  {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-2">
+                This secret is provided by Resend when you create the webhook. It is used to verify that requests are legitimately sent by Resend.
+              </p>
+            </div>
+
+            {/* Save Button */}
+            <div className="pt-4 border-t border-white/5 flex justify-end">
+              <button
+                onClick={handleSaveIntegrations}
+                disabled={saving === "integrations"}
+                className="flex items-center gap-2 px-6 py-3 bg-[#39FF14] hover:bg-[#39FF14]/90 text-black text-xs font-bold uppercase tracking-widest rounded-xl transition-all disabled:opacity-50 hover:scale-[1.02] active:scale-[0.98]"
+              >
+                {saving === "integrations" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                Save Webhook Settings
+              </button>
             </div>
           </div>
         </div>
