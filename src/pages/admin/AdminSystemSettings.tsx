@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { Settings, Loader2, Save, ToggleLeft, ToggleRight, Shield, MessageCircle, Star, Gift, RefreshCw, Palette, Image as ImageIcon, Upload, Copy, Check, Eye, EyeOff, Link } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api-client";
-import { supabase } from "@/lib/supabase";
+import { storage } from "@/lib/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 interface SystemSetting {
   key: string;
@@ -141,17 +142,12 @@ export default function AdminSystemSettings() {
       const fileExt = file.name.split(".").pop();
       const fileName = `${type}-${Date.now()}.${fileExt}`;
 
-      // Upload file to Supabase storage 'brand-assets'
-      const { data, error } = await supabase.storage
-        .from("brand-assets")
-        .upload(fileName, file, { cacheControl: "3600", upsert: true });
-
-      if (error) throw error;
+      // Upload file to Firebase storage 'brand-assets'
+      const storageRef = ref(storage, `brand-assets/${fileName}`);
+      await uploadBytes(storageRef, file);
 
       // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from("brand-assets")
-        .getPublicUrl(fileName);
+      const publicUrl = await getDownloadURL(storageRef);
 
       // Save to system_settings
       const { error: apiError } = await apiClient.put(`/settings.php?key=${type}`, { value: publicUrl });
