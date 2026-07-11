@@ -104,15 +104,27 @@ async function request<T = any>(
       }
     } else if (path.includes("quotations")) {
       if (method === "GET") {
-        const { data, error } = await supabase.from("quotations").select(`
-          *,
-          products_cms ( name )
-        `).order("created_at", { ascending: false });
-        if (error) throw error;
-        responseData = data?.map((q: any) => ({
-          ...q,
-          product_name: q.products_cms?.name || "Custom Design"
-        }));
+        if (params.id) {
+          const { data, error } = await supabase.from("quotations").select(`
+            *,
+            products_cms ( name )
+          `).eq("id", params.id).single();
+          if (error) throw error;
+          responseData = {
+            ...data,
+            product_name: data?.products_cms?.name || "Custom Design"
+          };
+        } else {
+          const { data, error } = await supabase.from("quotations").select(`
+            *,
+            products_cms ( name )
+          `).order("created_at", { ascending: false });
+          if (error) throw error;
+          responseData = data?.map((q: any) => ({
+            ...q,
+            product_name: q.products_cms?.name || "Custom Design"
+          }));
+        }
       } else if (method === "PUT") {
         const { data, error } = await supabase.from("quotations").update(body).eq("id", params.id).select().single();
         if (error) throw error;

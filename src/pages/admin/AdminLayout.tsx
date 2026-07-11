@@ -11,18 +11,30 @@ import { apiClient } from "@/lib/api-client";
 import { useAuth } from "@/hooks/useAuth";
 import NotificationBell from "@/components/features/NotificationBell";
 
+import {
+  LayoutDashboard, Users, Package, FileText, UserCog,
+  Zap, Bell, Search, Menu, X, ExternalLink, LogOut,
+  ChevronRight, BarChart3, Receipt, MessageSquare, MessageCircle,
+  Calendar, Settings, Globe, ShieldCheck, Mail, Megaphone,
+  FileImage, Compass, Sparkles
+} from "lucide-react";
+
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/admin" },
   { icon: Users, label: "Leads & CRM", href: "/admin/leads" },
   { icon: Receipt, label: "Quotations", href: "/admin/quotations" },
   { icon: MessageSquare, label: "Contacts", href: "/admin/contacts" },
-  { icon: BarChart3, label: "Analytics", href: "/admin/analytics" },
   { icon: Package, label: "Products", href: "/admin/products" },
-  { icon: FileText, label: "Content", href: "/admin/content" },
+  { icon: Globe, label: "Website CMS", href: "/admin/cms" },
+  { icon: FileText, label: "Content CMS", href: "/admin/content" },
+  { icon: FileImage, label: "Media Library", href: "/admin/media" },
   { icon: MessageCircle, label: "Live Chat", href: "/admin/chat" },
   { icon: Calendar, label: "Appointments", href: "/admin/appointments" },
-  { icon: UserCog, label: "Users", href: "/admin/users" },
-  { icon: Settings, label: "Settings", href: "/admin/settings" },
+  { icon: BarChart3, label: "Analytics", href: "/admin/analytics" },
+  { icon: Megaphone, label: "Marketing", href: "/admin/marketing" },
+  { icon: Compass, label: "SEO Settings", href: "/admin/seo" },
+  { icon: UserCog, label: "Admin Management", href: "/admin/users" },
+  { icon: Settings, label: "System Settings", href: "/admin/settings" },
 ];
 
 export default function AdminLayout() {
