@@ -4,20 +4,14 @@ import {
   LayoutDashboard, Users, Package, FileText, UserCog,
   Zap, Bell, Search, Menu, X, ExternalLink, LogOut,
   ChevronRight, BarChart3, Receipt, MessageSquare, MessageCircle,
-  Calendar, Settings
+  Calendar, Settings, Globe, ShieldCheck, Mail, Megaphone,
+  FileImage, Compass, Sparkles
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api-client";
 import { useAuth } from "@/hooks/useAuth";
 import NotificationBell from "@/components/features/NotificationBell";
 
-import {
-  LayoutDashboard, Users, Package, FileText, UserCog,
-  Zap, Bell, Search, Menu, X, ExternalLink, LogOut,
-  ChevronRight, BarChart3, Receipt, MessageSquare, MessageCircle,
-  Calendar, Settings, Globe, ShieldCheck, Mail, Megaphone,
-  FileImage, Compass, Sparkles
-} from "lucide-react";
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/admin" },
