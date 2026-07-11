@@ -7,6 +7,14 @@ export default defineConfig({
   server: {
     host: "::",
     port: 8080,
+    proxy: {
+      "/supabase": {
+        target: "https://ieijkjjyfgnnypfmieij.backend.onspace.ai",
+        changeOrigin: true,
+        ws: true,
+        rewrite: (path) => path.replace(/^\/supabase/, ""),
+      },
+    },
   },
   plugins: [
     react(),

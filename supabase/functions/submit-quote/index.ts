@@ -2,7 +2,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -28,15 +27,15 @@ function calcScore(body: Record<string, unknown>): number {
   return Math.min(score, 100);
 }
 
-async function sendEmail(to: string, subject: string, html: string) {
+async function sendEmail(apiKey: string, fromEmail: string, to: string, subject: string, html: string) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: "TRIP Mobility <noreply@tripmobility.ph>",
+      from: `TRIP Mobility <${fromEmail}>`,
       to,
       subject,
       html,
@@ -61,6 +60,14 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Load Resend settings from DB
+    const { data: settings } = await supabase.from("system_settings").select("key, value");
+    const dbApiKey = settings?.find((s: any) => s.key === "resend_api_key")?.value;
+    const dbFromEmail = settings?.find((s: any) => s.key === "resend_from_email")?.value;
+
+    const resendApiKey = dbApiKey || Deno.env.get("RESEND_API_KEY") || "";
+    const resendFromEmail = dbFromEmail || "noreply@tripmobility.ph";
 
     const score = calcScore(body);
 
@@ -225,8 +232,8 @@ serve(async (req) => {
 
     // Send both emails
     await Promise.all([
-      sendEmail(email, "Your TRIP Mobility Quote Request is Confirmed ⚡", customerHtml),
-      sendEmail("sales@tripmobility.ph", `${score >= 80 ? "🔥 HIGH PRIORITY" : "📋 New"} Lead: ${name} — ${product_interest} (${quantity} unit${quantity > 1 ? "s" : ""})`, salesHtml),
+      sendEmail(resendApiKey, resendFromEmail, email, "Your TRIP Mobility Quote Request is Confirmed ⚡", customerHtml),
+      sendEmail(resendApiKey, resendFromEmail, "sales@tripmobility.ph", `${score >= 80 ? "🔥 HIGH PRIORITY" : "📋 New"} Lead: ${name} — ${product_interest} (${quantity} unit${quantity > 1 ? "s" : ""})`, salesHtml),
     ]);
 
     return new Response(

@@ -1,15 +1,17 @@
 import { useState, useEffect } from "react";
 import { Zap, Mail, Lock, ArrowLeft, Eye, EyeOff, User, CheckCircle, FileText, Clock, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabase";
+import { auth, db } from "@/lib/firebase";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 
 function mapCustomer(user: any) {
   return {
     id: String(user.id),
     email: user.email || "",
-    username: user.user_metadata?.username || user.email?.split("@")[0] || "",
-    avatar: user.user_metadata?.avatar || "",
+    username: user.username || user.email?.split("@")[0] || "",
+    avatar: user.avatar || "",
   };
 }
 
@@ -42,6 +44,7 @@ export default function CustomerAuthModal({
   const [email, setEmail] = useState(prefilledEmail);
   const [username, setUsername] = useState("");
   const [otp, setOtp] = useState("");
+  const [mockOtp, setMockOtp] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -71,6 +74,7 @@ export default function CustomerAuthModal({
   const resetFlow = () => {
     setStep("email");
     setOtp("");
+    setMockOtp("");
     setPassword("");
     setShowPass(false);
   };
@@ -78,86 +82,92 @@ export default function CustomerAuthModal({
   const handleSendOtp = async () => {
     if (!email.trim()) return;
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-    });
-    if (error) {
-      toast.error(error.message);
+    try {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      setMockOtp(code);
+      console.log(`[Firebase OTP Emulation] Code for ${email}: ${code}`);
+      toast.success(`Verification code sent! (Emulated Code: ${code})`);
+      setStep("otp");
+      setResendCooldown(60);
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
       setLoading(false);
-      return;
     }
-    toast.success("Verification code sent to " + email.trim());
-    setStep("otp");
-    setResendCooldown(60);
-    setLoading(false);
   };
 
   const handleResendOtp = async () => {
     if (resendCooldown > 0 || loading) return;
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-    });
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success("New code sent to " + email.trim());
+    try {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      setMockOtp(code);
+      console.log(`[Firebase OTP Emulation] New Code for ${email}: ${code}`);
+      toast.success(`New code sent! (Emulated Code: ${code})`);
       setResendCooldown(60);
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleVerifyAndRegister = async () => {
-    setLoading(true);
-    const { data, error } = await supabase.auth.verifyOtp({
-      email: email.trim(),
-      token: otp.trim(),
-      type: 'email',
-    });
-    if (error) {
+    if (otp.trim() !== mockOtp) {
       toast.error("Invalid or expired code. Please try again.");
-      setLoading(false);
       return;
     }
-    if (data && data.user) {
-      const { data: updateData, error: updateError } = await supabase.auth.updateUser({
-        password: password.trim(),
-        data: {
-          username: username || email.split("@")[0],
-          role: "customer"
-        }
+    setLoading(true);
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password.trim());
+      const firebaseUser = userCredential.user;
+      
+      const displayName = username.trim() || email.split("@")[0];
+      
+      // Save profile in Firestore
+      await setDoc(doc(db, "profiles", firebaseUser.uid), {
+        role: "customer",
+        username: displayName,
+        avatar: "",
+        created_at: new Date().toISOString()
       });
-      if (updateError) {
-        toast.error(updateError.message);
-        setLoading(false);
-        return;
-      }
-      if (updateData && updateData.user) {
-        login(mapCustomer(updateData.user));
-        toast.success("Account created! Welcome to TRIP Mobility.");
-        onSuccess();
-      }
+
+      login({
+        id: firebaseUser.uid,
+        email: firebaseUser.email || "",
+        username: displayName,
+        avatar: ""
+      });
+
+      toast.success("Account created! Welcome to TRIP Mobility.");
+      onSuccess();
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleLogin = async () => {
     setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password: password.trim(),
-    });
-    if (error) {
-      toast.error(error.message);
-      setLoading(false);
-      return;
-    }
-    if (data && data.user) {
-      login(mapCustomer(data.user));
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password.trim());
+      const firebaseUser = userCredential.user;
+
+      login({
+        id: firebaseUser.uid,
+        email: firebaseUser.email || "",
+        username: firebaseUser.displayName || email.split("@")[0],
+        avatar: firebaseUser.photoURL || ""
+      });
+
       toast.success("Welcome back!");
       onSuccess();
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const benefits = [

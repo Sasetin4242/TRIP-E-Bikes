@@ -5,7 +5,19 @@ import {
 } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
-import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  doc,
+  getDocs,
+  updateDoc,
+  deleteDoc,
+  query,
+  orderBy,
+  onSnapshot,
+  writeBatch,
+  Timestamp
+} from "firebase/firestore";
 import { toast } from "sonner";
 
 interface NotificationData {
@@ -35,42 +47,31 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [tableExists, setTableExists] = useState(true);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const fetchNotifications = useCallback(async () => {
     if (isAdmin) {
-      if (!tableExists) return;
       try {
-        const { data, error } = await supabase
-          .from("notifications")
-          .select("*")
-          .order("created_at", { ascending: false });
-
-        if (error) {
-          if (error.code === "42P01" || error.code === "PGRST116" || error.code === "PGRST204") {
-            setTableExists(false);
-          } else {
-            console.error("Failed to fetch admin notifications:", error);
-          }
-          return;
-        }
-        if (data) {
-          setNotifications(data.map((n: any) => ({
-            id: String(n.id),
+        const querySnapshot = await getDocs(
+          query(collection(db, "notifications"), orderBy("created_at", "desc"))
+        );
+        setNotifications(querySnapshot.docs.map((docSnap) => {
+          const n = docSnap.data();
+          return {
+            id: docSnap.id,
             type: n.type || "info",
             title: n.title || "Notification",
             body: n.message || n.body || "",
             read: !!n.read,
             metadata: n.metadata || {},
-            created_at: n.created_at,
-          })));
-        }
+            created_at: n.created_at instanceof Timestamp ? n.created_at.toDate().toISOString() : n.created_at,
+          };
+        }));
       } catch (e) {
-        setTableExists(false);
+        console.warn("Failed to fetch admin notifications:", e);
       }
     } else {
-      // Fetch customer notifications from API
+      // Fetch customer notifications from API (which queries Firestore under the hood)
       if (!customer) return;
       const { data } = await apiClient.get(`/notifications.php?email=${customer.email}`);
       if (data && Array.isArray(data)) {
@@ -88,73 +89,43 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
     }
   }, [customer, isAdmin]);
 
-  // Set up polling (for customer) or Postgres subscription (for admin)
+  // Set up realtime notification listener for Admin
   useEffect(() => {
-    fetchNotifications();
-
-    if (isAdmin && tableExists) {
-      let channel: any;
-      try {
-        channel = supabase
-          .channel("admin-notifications-realtime")
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "notifications",
-            },
-            (payload) => {
-              if (payload.eventType === "INSERT") {
-                const newNotif = payload.new;
-                setNotifications((prev) => [
-                  {
-                    id: String(newNotif.id),
-                    type: newNotif.type || "info",
-                    title: newNotif.title || "Notification",
-                    body: newNotif.message || newNotif.body || "",
-                    read: !!newNotif.read,
-                    metadata: newNotif.metadata || {},
-                    created_at: newNotif.created_at,
-                  },
-                  ...prev,
-                ]);
-                toast.info(`New Alert: ${newNotif.title || "New notification"}`);
-              } else if (payload.eventType === "UPDATE") {
-                const updatedNotif = payload.new;
-                setNotifications((prev) =>
-                  prev.map((n) =>
-                    n.id === String(updatedNotif.id)
-                      ? {
-                          ...n,
-                          read: !!updatedNotif.read,
-                          title: updatedNotif.title || n.title,
-                          body: updatedNotif.message || updatedNotif.body || n.body,
-                        }
-                      : n
-                  )
-                );
-              } else if (payload.eventType === "DELETE") {
-                const deletedNotif = payload.old;
-                setNotifications((prev) => prev.filter((n) => n.id !== String(deletedNotif.id)));
-              }
-            }
-          )
-          .subscribe();
-
-        return () => {
-          supabase.removeChannel(channel);
-        };
-      } catch (e) {
-        setTableExists(false);
-      }
-      if (channel) return () => { supabase.removeChannel(channel); };
-
-    } else if (!isAdmin) {
+    if (!isAdmin) {
+      fetchNotifications();
       const interval = setInterval(fetchNotifications, 15000);
       return () => clearInterval(interval);
     }
-  }, [fetchNotifications, isAdmin, tableExists]);
+
+    const q = query(collection(db, "notifications"), orderBy("created_at", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const notifs = snapshot.docs.map((docSnap) => {
+        const n = docSnap.data();
+        return {
+          id: docSnap.id,
+          type: n.type || "info",
+          title: n.title || "Notification",
+          body: n.message || n.body || "",
+          read: !!n.read,
+          metadata: n.metadata || {},
+          created_at: n.created_at instanceof Timestamp ? n.created_at.toDate().toISOString() : n.created_at,
+        };
+      });
+      
+      // Toast on new unread notifications
+      if (notifications.length > 0 && notifs.length > notifications.length) {
+        const newNotif = notifs[0];
+        if (!newNotif.read) {
+          toast.info(`New Alert: ${newNotif.title || "New notification"}`);
+        }
+      }
+      setNotifications(notifs);
+    }, (err) => {
+      console.warn("Notifications snapshot error:", err);
+    });
+
+    return () => unsubscribe();
+  }, [isAdmin, fetchNotifications, notifications]);
 
   // Close on outside click
   useEffect(() => {
@@ -172,11 +143,13 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
   const markRead = async (id: string) => {
     try {
       if (isAdmin) {
-        await supabase.from("notifications").update({ read: true }).eq("id", id);
+        await updateDoc(doc(db, "notifications", id), { read: true });
       } else {
         await apiClient.put(`/notifications.php?id=${id}`, { read: true });
       }
-    } catch (e) { /* table may not exist */ }
+    } catch (e) {
+      console.warn("Failed to mark read:", e);
+    }
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   };
 
@@ -186,11 +159,17 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
     if (unreadIds.length > 0) {
       try {
         if (isAdmin) {
-          await supabase.from("notifications").update({ read: true }).in("id", unreadIds);
+          const batch = writeBatch(db);
+          unreadIds.forEach((id) => {
+            batch.update(doc(db, "notifications", id), { read: true });
+          });
+          await batch.commit();
         } else if (customer) {
           await apiClient.post("/notifications.php?action=mark_all_read", { email: customer.email });
         }
-      } catch (e) { /* table may not exist */ }
+      } catch (e) {
+        console.warn("Failed to mark all read:", e);
+      }
     }
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     setLoading(false);
@@ -199,11 +178,13 @@ export default function NotificationBell({ isAdmin = false }: NotificationBellPr
   const deleteNotification = async (id: string) => {
     try {
       if (isAdmin) {
-        await supabase.from("notifications").delete().eq("id", id);
+        await deleteDoc(doc(db, "notifications", id));
       } else {
         await apiClient.delete(`/notifications.php?id=${id}`);
       }
-    } catch (e) { /* table may not exist */ }
+    } catch (e) {
+      console.warn("Failed to delete notification:", e);
+    }
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 

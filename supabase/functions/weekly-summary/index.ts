@@ -1,7 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const ADMIN_EMAIL = "sales@tripmobility.ph";
 
 Deno.serve(async (req) => {
@@ -11,6 +10,14 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
+
+  // Load Resend settings from DB
+  const { data: settings } = await supabaseAdmin.from("system_settings").select("key, value");
+  const dbApiKey = settings?.find((s: any) => s.key === "resend_api_key")?.value;
+  const dbFromEmail = settings?.find((s: any) => s.key === "resend_from_email")?.value;
+
+  const resendApiKey = dbApiKey || Deno.env.get("RESEND_API_KEY") || "";
+  const resendFromEmail = dbFromEmail || "noreply@tripmobility.ph";
 
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -172,9 +179,9 @@ Deno.serve(async (req) => {
   // Send via Resend
   const resendRes = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendApiKey}` },
     body: JSON.stringify({
-      from: "TRIP Mobility <noreply@tripmobility.ph>",
+      from: `TRIP Mobility <${resendFromEmail}>`,
       to: [ADMIN_EMAIL],
       subject: `📊 Weekly Sales Digest — ${weekStr}`,
       html,

@@ -47,6 +47,9 @@ export default function AdminSystemSettings() {
   const [webhookSecret, setWebhookSecret] = useState("");
   const [showSecret, setShowSecret] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [resendApiKey, setResendApiKey] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [resendFromEmail, setResendFromEmail] = useState("noreply@tripmobility.ph");
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -68,6 +71,12 @@ export default function AdminSystemSettings() {
 
       const webhookSecretSetting = data.find((s: any) => s.key === "resend_webhook_signing_secret");
       if (webhookSecretSetting) setWebhookSecret(webhookSecretSetting.value);
+
+      const apiKeySetting = data.find((s: any) => s.key === "resend_api_key");
+      if (apiKeySetting) setResendApiKey(apiKeySetting.value);
+
+      const fromEmailSetting = data.find((s: any) => s.key === "resend_from_email");
+      if (fromEmailSetting) setResendFromEmail(fromEmailSetting.value);
     }
     setLoading(false);
   }, []);
@@ -176,16 +185,32 @@ export default function AdminSystemSettings() {
   const handleSaveIntegrations = async () => {
     setSaving("integrations");
     try {
-      const { error } = await apiClient.put(`/settings.php?key=resend_webhook_signing_secret`, { value: webhookSecret });
-      if (error) {
-        toast.error("Failed to save integration settings: " + error.message);
+      const results = await Promise.all([
+        apiClient.put(`/settings.php?key=resend_webhook_signing_secret`, { value: webhookSecret }),
+        apiClient.put(`/settings.php?key=resend_api_key`, { value: resendApiKey }),
+        apiClient.put(`/settings.php?key=resend_from_email`, { value: resendFromEmail })
+      ]);
+
+      const failed = results.find(r => r.error);
+      if (failed) {
+        toast.error("Failed to save integration settings: " + failed.error.message);
       } else {
         toast.success("Integration settings saved successfully!");
         setSettings(prev => {
           const updated = [...prev];
+          
           const secretIdx = updated.findIndex(s => s.key === "resend_webhook_signing_secret");
           if (secretIdx > -1) updated[secretIdx].value = webhookSecret;
           else updated.push({ key: "resend_webhook_signing_secret", value: webhookSecret });
+
+          const apiIdx = updated.findIndex(s => s.key === "resend_api_key");
+          if (apiIdx > -1) updated[apiIdx].value = resendApiKey;
+          else updated.push({ key: "resend_api_key", value: resendApiKey });
+
+          const fromIdx = updated.findIndex(s => s.key === "resend_from_email");
+          if (fromIdx > -1) updated[fromIdx].value = resendFromEmail;
+          else updated.push({ key: "resend_from_email", value: resendFromEmail });
+
           return updated;
         });
       }
@@ -533,6 +558,49 @@ export default function AdminSystemSettings() {
               </p>
             </div>
 
+            {/* Resend API Key */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
+                Resend API Key
+              </label>
+              <div className="relative">
+                <input
+                  type={showApiKey ? "text" : "password"}
+                  value={resendApiKey}
+                  onChange={(e) => setResendApiKey(e.target.value)}
+                  placeholder="re_..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-4 pr-12 py-3 text-sm text-white focus:outline-none focus:border-[#39FF14] transition-all font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
+                >
+                  {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-2">
+                Your Resend API Key, used to authenticate email-sending calls from edge functions.
+              </p>
+            </div>
+
+            {/* Resend Sender Email */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
+                Resend Sender Email (From Address)
+              </label>
+              <input
+                type="email"
+                value={resendFromEmail}
+                onChange={(e) => setResendFromEmail(e.target.value)}
+                placeholder="noreply@tripmobility.ph"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#39FF14] transition-all"
+              />
+              <p className="text-[11px] text-gray-500 mt-2">
+                The authenticated domain email address to send outbound system notifications from.
+              </p>
+            </div>
+
             {/* Signing Secret */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">
@@ -571,7 +639,7 @@ export default function AdminSystemSettings() {
                 ) : (
                   <Save className="w-4 h-4" />
                 )}
-                Save Webhook Settings
+                Save Settings
               </button>
             </div>
           </div>

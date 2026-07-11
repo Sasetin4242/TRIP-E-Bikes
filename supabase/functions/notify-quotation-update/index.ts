@@ -2,21 +2,20 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-async function sendEmail(to: string, subject: string, html: string) {
+async function sendEmail(apiKey: string, fromEmail: string, to: string, subject: string, html: string) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: "TRIP Mobility <noreply@tripmobility.ph>",
+      from: `TRIP Mobility <${fromEmail}>`,
       to,
       subject,
       html,
@@ -42,6 +41,14 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Load Resend settings from DB
+    const { data: settings } = await supabaseAdmin.from("system_settings").select("key, value");
+    const dbApiKey = settings?.find((s: any) => s.key === "resend_api_key")?.value;
+    const dbFromEmail = settings?.find((s: any) => s.key === "resend_from_email")?.value;
+
+    const resendApiKey = dbApiKey || Deno.env.get("RESEND_API_KEY") || "";
+    const resendFromEmail = dbFromEmail || "noreply@tripmobility.ph";
 
     // Fetch quotation details
     const { data: quotation, error: qErr } = await supabaseAdmin
@@ -181,7 +188,7 @@ serve(async (req) => {
 
     const subject = subjectMap[status] || `📋 Quotation Update — ${quotation.product_name}`;
 
-    await sendEmail(customerEmail, subject, html);
+    await sendEmail(resendApiKey, resendFromEmail, customerEmail, subject, html);
 
     console.log(`Quotation notification sent to ${customerEmail} for status: ${status}`);
 

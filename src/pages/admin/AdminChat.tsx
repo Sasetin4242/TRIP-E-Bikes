@@ -4,7 +4,20 @@ import {
   X, Zap, Archive, MessageCircle, Bell, BellOff
 } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  Timestamp
+} from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
 
 interface ChatSession {
@@ -104,86 +117,91 @@ export default function AdminChat() {
 
   const fetchSessions = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    const { data: sessionsData, error: sessionsError } = await supabase
-      .from("chat_sessions")
-      .select(`
-        *,
-        chat_messages (
-          message,
-          created_at,
-          read,
-          sender
-        )
-      `)
-      .order("updated_at", { ascending: false });
+    try {
+      const sessionsQuery = query(collection(db, "chat_sessions"), orderBy("updated_at", "desc"));
+      const sessionsSnap = await getDocs(sessionsQuery);
+      const enriched = [];
+      for (const sessionDoc of sessionsSnap.docs) {
+        const s = sessionDoc.data();
+        
+        // Fetch all messages for this session
+        const msgsSnap = await getDocs(
+          query(collection(db, "chat_messages"), where("session_id", "==", sessionDoc.id), orderBy("created_at", "asc"))
+        );
+        const msgs = msgsSnap.docs.map(doc => doc.data());
+        const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+        const unreadCount = msgs.filter((m: any) => m.sender !== "agent" && !m.read).length;
 
-    if (sessionsError || !sessionsData) {
-      if (!silent) setLoading(false);
-      return;
-    }
-
-    const enriched = sessionsData.map((s: any) => {
-      const msgs = s.chat_messages || [];
-      const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
-      const unreadCount = msgs.filter((m: any) => m.sender !== "agent" && !m.read).length;
-      return {
-        id: s.id,
-        customer_name: s.user_name || "Visitor",
-        customer_email: s.user_email || "",
-        status: s.status || "open",
-        assigned_agent: s.assigned_agent || null,
-        last_message_at: lastMsg ? lastMsg.created_at : s.updated_at,
-        created_at: s.created_at,
-        unread_count: unreadCount,
-        last_message: lastMsg ? lastMsg.message : "",
-      };
-    });
-
-    // ── Detect new unread messages and fire desktop notifications ──
-    enriched.forEach((sess: any) => {
-      const prevCount = prevUnreadRef.current[sess.id] || 0;
-      const newCount = sess.unread_count || 0;
-      if (newCount > prevCount && newCount > 0) {
-        sendDesktopNotification(sess.customer_name, sess.last_message || "New message");
+        enriched.push({
+          id: sessionDoc.id,
+          customer_name: s.user_name || "Visitor",
+          customer_email: s.user_email || "",
+          status: s.status || "open",
+          assigned_agent: s.assigned_agent || null,
+          last_message_at: lastMsg ? (lastMsg.created_at instanceof Timestamp ? lastMsg.created_at.toDate().toISOString() : lastMsg.created_at) : (s.updated_at instanceof Timestamp ? s.updated_at.toDate().toISOString() : s.updated_at),
+          created_at: s.created_at instanceof Timestamp ? s.created_at.toDate().toISOString() : s.created_at,
+          unread_count: unreadCount,
+          last_message: lastMsg ? lastMsg.message : "",
+        });
       }
-    });
-    prevUnreadRef.current = Object.fromEntries(enriched.map((s: any) => [s.id, s.unread_count || 0]));
+      
+      // Fire notifications
+      enriched.forEach((sess: any) => {
+        const prevCount = prevUnreadRef.current[sess.id] || 0;
+        const newCount = sess.unread_count || 0;
+        if (newCount > prevCount && newCount > 0) {
+          sendDesktopNotification(sess.customer_name, sess.last_message || "New message");
+        }
+      });
+      prevUnreadRef.current = Object.fromEntries(enriched.map((s: any) => [s.id, s.unread_count || 0]));
 
-    setSessions(enriched);
-    if (!silent) setLoading(false);
+      setSessions(enriched);
+    } catch (e: any) {
+      console.warn("fetchSessions failed:", e);
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, [sendDesktopNotification]);
 
   const fetchMessages = useCallback(async () => {
     if (!selected) return;
-    const { data } = await supabase
-      .from("chat_messages")
-      .select("*")
-      .eq("session_id", selected.id)
-      .order("created_at", { ascending: true });
-    if (data) {
-      const mapped = data.map((m: any) => ({
-        id: String(m.id),
-        session_id: m.session_id,
-        sender_type: m.sender === "user" ? "customer" : m.sender,
-        sender_name: m.sender === "user" ? "You" : (m.sender === "bot" ? "TRIP AI" : "Agent"),
-        message: m.message,
-        read: m.read === 1 || m.read === true,
-        created_at: m.created_at,
-      }));
+    try {
+      const q = query(
+        collection(db, "chat_messages"),
+        where("session_id", "==", selected.id),
+        orderBy("created_at", "asc")
+      );
+      const msgsSnap = await getDocs(q);
+      const mapped = msgsSnap.docs.map((docSnap) => {
+        const m = docSnap.data();
+        return {
+          id: docSnap.id,
+          session_id: m.session_id,
+          sender_type: m.sender === "user" ? "customer" : m.sender,
+          sender_name: m.sender === "user" ? "You" : (m.sender === "bot" ? "TRIP AI" : "Agent"),
+          message: m.message,
+          read: m.read === 1 || m.read === true,
+          created_at: m.created_at instanceof Timestamp ? m.created_at.toDate().toISOString() : m.created_at,
+        };
+      });
       setMessages(mapped);
-    }
 
-    await supabase
-      .from("chat_messages")
-      .update({ read: true })
-      .eq("session_id", selected.id)
-      .neq("sender", "agent");
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      // Mark messages as read
+      for (const docSnap of msgsSnap.docs) {
+        const m = docSnap.data();
+        if (m.sender !== "agent" && !m.read) {
+          await updateDoc(docSnap.ref, { read: true });
+        }
+      }
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    } catch (e) {
+      console.warn("fetchMessages failed:", e);
+    }
   }, [selected]);
 
   useEffect(() => {
     fetchSessions();
-    const interval = setInterval(() => fetchSessions(true), 5000);
+    const interval = setInterval(() => fetchSessions(true), 10000);
     return () => clearInterval(interval);
   }, [fetchSessions]);
 
@@ -194,50 +212,31 @@ export default function AdminChat() {
   }, [selected, fetchMessages]);
 
   useEffect(() => {
-    // Subscribe to all chat message inserts to update sessions and messages list
-    const channel = supabase
-      .channel("admin-chat-messages")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_messages",
-        },
-        (payload) => {
-          const newMsg = payload.new as any;
-          fetchSessions(true);
-          if (selected && newMsg.session_id === selected.id) {
-            const mapped = {
-              id: String(newMsg.id),
-              session_id: newMsg.session_id,
-              sender_type: newMsg.sender === "user" ? "customer" : newMsg.sender,
-              sender_name: newMsg.sender === "user" ? "You" : (newMsg.sender === "bot" ? "TRIP AI" : "Agent"),
-              message: newMsg.message,
-              read: newMsg.read === 1 || newMsg.read === true,
-              created_at: newMsg.created_at,
-            };
-            setMessages((prev) => {
-              if (prev.some(m => m.id === mapped.id)) return prev;
-              return [...prev, mapped];
-            });
-            if (newMsg.sender !== "agent") {
-              supabase
-                .from("chat_messages")
-                .update({ read: true })
-                .eq("id", newMsg.id)
-                .then(() => {
-                  fetchSessions(true);
-                });
-            }
-          }
-        }
-      )
-      .subscribe();
+    if (!selected) return;
+    // Subscribe to messages changes
+    const q = query(
+      collection(db, "chat_messages"),
+      where("session_id", "==", selected.id),
+      orderBy("created_at", "asc")
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const mapped = snapshot.docs.map((docSnap) => {
+        const m = docSnap.data();
+        return {
+          id: docSnap.id,
+          session_id: m.session_id,
+          sender_type: m.sender === "user" ? "customer" : m.sender,
+          sender_name: m.sender === "user" ? "You" : (m.sender === "bot" ? "TRIP AI" : "Agent"),
+          message: m.message,
+          read: m.read === 1 || m.read === true,
+          created_at: m.created_at instanceof Timestamp ? m.created_at.toDate().toISOString() : m.created_at,
+        };
+      });
+      setMessages(mapped);
+      fetchSessions(true);
+    });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => unsubscribe();
   }, [selected, fetchSessions]);
 
   const sendMessage = async () => {
@@ -245,17 +244,24 @@ export default function AdminChat() {
     const msg = input.trim();
     setInput("");
     setSending(true);
-    await supabase.from("chat_messages").insert({
-      session_id: selected.id,
-      sender: "agent",
-      message: msg,
-    });
-    await supabase
-      .from("chat_sessions")
-      .update({ assigned_agent: user?.username })
-      .eq("id", selected.id);
-    await fetchMessages();
-    setSending(false);
+    try {
+      await addDoc(collection(db, "chat_messages"), {
+        session_id: selected.id,
+        sender: "agent",
+        message: msg,
+        read: true,
+        created_at: Timestamp.now()
+      });
+      await updateDoc(doc(db, "chat_sessions", selected.id), {
+        assigned_agent: user?.username || "Agent",
+        updated_at: Timestamp.now()
+      });
+      await fetchMessages();
+    } catch (e) {
+      console.warn("sendMessage failed:", e);
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -263,14 +269,16 @@ export default function AdminChat() {
   };
 
   const updateStatus = async (sessionId: string, status: string) => {
-    const { error } = await supabase
-      .from("chat_sessions")
-      .update({ status })
-      .eq("id", sessionId);
-    if (!error) {
+    try {
+      await updateDoc(doc(db, "chat_sessions", sessionId), {
+        status,
+        updated_at: Timestamp.now()
+      });
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status } : s));
       if (selected?.id === sessionId) setSelected(s => s ? { ...s, status } : null);
       toast.success(`Chat marked as ${status}`);
+    } catch (e: any) {
+      toast.error("Failed to update status: " + e.message);
     }
   };
 

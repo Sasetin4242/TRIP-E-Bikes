@@ -2,21 +2,20 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-async function sendEmail(to: string, subject: string, html: string) {
+async function sendEmail(apiKey: string, fromEmail: string, to: string, subject: string, html: string) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: "TRIP Mobility <noreply@tripmobility.ph>",
+      from: `TRIP Mobility <${fromEmail}>`,
       to,
       subject,
       html,
@@ -76,7 +75,6 @@ serve(async (req) => {
       .select("id, reply_count")
       .eq("id", messageId)
       .single();
-
     if (fetchError || !message) {
       return new Response(
         JSON.stringify({ error: "Contact message not found: " + (fetchError?.message || "unknown") }),
@@ -84,8 +82,16 @@ serve(async (req) => {
       );
     }
 
+    // Load Resend settings from DB
+    const { data: settings } = await supabaseAdmin.from("system_settings").select("key, value");
+    const dbApiKey = settings?.find((s: any) => s.key === "resend_api_key")?.value;
+    const dbFromEmail = settings?.find((s: any) => s.key === "resend_from_email")?.value;
+
+    const resendApiKey = dbApiKey || Deno.env.get("RESEND_API_KEY") || "";
+    const resendFromEmail = dbFromEmail || "noreply@tripmobility.ph";
+
     // 4. Send email via Resend
-    const emailResult = await sendEmail(recipientEmail, subject, html);
+    const emailResult = await sendEmail(resendApiKey, resendFromEmail, recipientEmail, subject, html);
 
     // 5. Update DB record on success
     const currentReplyCount = message.reply_count || 0;

@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS public.products_cms (
 CREATE INDEX IF NOT EXISTS idx_products_status ON public.products_cms(status);
 CREATE INDEX IF NOT EXISTS idx_products_category ON public.products_cms(category);
 
-CREATE OR REPLACE TRIGGER update_products_cms_updated_at
+DROP TRIGGER IF EXISTS update_products_cms_updated_at ON public.products_cms;
+CREATE TRIGGER update_products_cms_updated_at
     BEFORE UPDATE ON public.products_cms
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
@@ -92,7 +93,8 @@ CREATE TABLE IF NOT EXISTS public.product_reviews (
 
 CREATE INDEX IF NOT EXISTS idx_reviews_product_status ON public.product_reviews(product_id, status);
 
-CREATE OR REPLACE TRIGGER update_product_reviews_updated_at
+DROP TRIGGER IF EXISTS update_product_reviews_updated_at ON public.product_reviews;
+CREATE TRIGGER update_product_reviews_updated_at
     BEFORE UPDATE ON public.product_reviews
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
@@ -116,7 +118,8 @@ CREATE TABLE IF NOT EXISTS public.quotations (
 CREATE INDEX IF NOT EXISTS idx_quotations_status ON public.quotations(status);
 CREATE INDEX IF NOT EXISTS idx_quotations_email ON public.quotations(customer_email);
 
-CREATE OR REPLACE TRIGGER update_quotations_updated_at
+DROP TRIGGER IF EXISTS update_quotations_updated_at ON public.quotations;
+CREATE TRIGGER update_quotations_updated_at
     BEFORE UPDATE ON public.quotations
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
@@ -140,7 +143,8 @@ CREATE INDEX IF NOT EXISTS idx_appointments_date ON public.service_appointments(
 CREATE INDEX IF NOT EXISTS idx_appointments_status ON public.service_appointments(status);
 CREATE INDEX IF NOT EXISTS idx_appointments_email ON public.service_appointments(customer_email);
 
-CREATE OR REPLACE TRIGGER update_service_appointments_updated_at
+DROP TRIGGER IF EXISTS update_service_appointments_updated_at ON public.service_appointments;
+CREATE TRIGGER update_service_appointments_updated_at
     BEFORE UPDATE ON public.service_appointments
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
@@ -177,7 +181,8 @@ CREATE TABLE IF NOT EXISTS public.blog_posts (
 
 CREATE INDEX IF NOT EXISTS idx_blog_status_published ON public.blog_posts(status, published_at);
 
-CREATE OR REPLACE TRIGGER update_blog_posts_updated_at
+DROP TRIGGER IF EXISTS update_blog_posts_updated_at ON public.blog_posts;
+CREATE TRIGGER update_blog_posts_updated_at
     BEFORE UPDATE ON public.blog_posts
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
@@ -195,7 +200,8 @@ CREATE TABLE IF NOT EXISTS public.chat_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_status ON public.chat_sessions(status);
 
-CREATE OR REPLACE TRIGGER update_chat_sessions_updated_at
+DROP TRIGGER IF EXISTS update_chat_sessions_updated_at ON public.chat_sessions;
+CREATE TRIGGER update_chat_sessions_updated_at
     BEFORE UPDATE ON public.chat_sessions
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
@@ -221,7 +227,8 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE OR REPLACE TRIGGER update_system_settings_updated_at
+DROP TRIGGER IF EXISTS update_system_settings_updated_at ON public.system_settings;
+CREATE TRIGGER update_system_settings_updated_at
     BEFORE UPDATE ON public.system_settings
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
@@ -238,7 +245,8 @@ CREATE TABLE IF NOT EXISTS public.loyalty_points (
 
 CREATE INDEX IF NOT EXISTS idx_loyalty_email ON public.loyalty_points(customer_email);
 
-CREATE OR REPLACE TRIGGER update_loyalty_points_updated_at
+DROP TRIGGER IF EXISTS update_loyalty_points_updated_at ON public.loyalty_points;
+CREATE TRIGGER update_loyalty_points_updated_at
     BEFORE UPDATE ON public.loyalty_points
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
@@ -320,7 +328,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE TRIGGER on_lead_created
+DROP TRIGGER IF EXISTS on_lead_created ON public.leads;
+CREATE TRIGGER on_lead_created
     AFTER INSERT ON public.leads
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_new_lead_notification();
@@ -341,7 +350,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE TRIGGER on_chat_message_created
+DROP TRIGGER IF EXISTS on_chat_message_created ON public.chat_messages;
+CREATE TRIGGER on_chat_message_created
     AFTER INSERT ON public.chat_messages
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_new_chat_message_notification();
@@ -353,7 +363,7 @@ BEGIN
     INSERT INTO public.notifications (title, message, type)
     VALUES (
         '📅 New Appointment Booking',
-        'Service appointment scheduled by ' || COALESCE(NEW.customer_name, NEW.email, 'Customer') || 
+        'Service appointment scheduled by ' || COALESCE(NEW.customer_name, NEW.customer_email, 'Customer') || 
         ' on ' || COALESCE(NEW.appointment_date::text, 'scheduled date') || '.',
         'appointment'
     );
@@ -361,7 +371,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE TRIGGER on_appointment_created
+DROP TRIGGER IF EXISTS on_appointment_created ON public.service_appointments;
+CREATE TRIGGER on_appointment_created
     AFTER INSERT ON public.service_appointments
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_new_appointment_notification();
@@ -381,7 +392,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE TRIGGER on_contact_message_created
+DROP TRIGGER IF EXISTS on_contact_message_created ON public.contact_messages;
+CREATE TRIGGER on_contact_message_created
     AFTER INSERT ON public.contact_messages
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_new_contact_message_notification();
@@ -448,7 +460,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE TRIGGER on_auth_user_created
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_new_user_profile();
@@ -510,6 +523,16 @@ END
 $$;
 
 -- Seed system settings default Webhook Signing Secret key
-INSERT INTO public.system_settings (setting_key, setting_value, description)
+INSERT INTO public.system_settings (key, value, description)
 VALUES ('resend_webhook_signing_secret', '', 'Resend Webhook Secret key for validation')
-ON CONFLICT (setting_key) DO NOTHING;
+ON CONFLICT (key) DO NOTHING;
+
+-- Seed system settings default Resend API Key
+INSERT INTO public.system_settings (key, value, description)
+VALUES ('resend_api_key', '', 'Resend API key for sending emails')
+ON CONFLICT (key) DO NOTHING;
+
+-- Seed system settings default Resend Sender Email
+INSERT INTO public.system_settings (key, value, description)
+VALUES ('resend_from_email', 'noreply@tripmobility.ph', 'Resend Sender/From Email address')
+ON CONFLICT (key) DO NOTHING;

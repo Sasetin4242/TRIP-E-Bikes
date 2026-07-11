@@ -3,8 +3,52 @@ import {
   MessageCircle, X, Send, Minimize2, Maximize2, Zap,
   Loader2, CheckCircle, Bot, User, Clock, Star
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/firebase";
+import { doc, getDoc, collection, addDoc, updateDoc, query, where, orderBy, onSnapshot, Timestamp } from "firebase/firestore";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
+
+function getLocalBotResponse(message: string): string {
+  const msg = message.toLowerCase();
+  
+  if (msg.includes("models") || msg.includes("offer") || msg.includes("catalog") || msg.includes("bikes") || msg.includes("bike") || msg.includes("product")) {
+    if (msg.includes("cargo")) {
+      return "The **TRIP Cargo Pro** (₱65,000) is built for delivery and last-mile logistics. It has a dual 48V 11.6Ah battery (100–120 km range), 500W motor, 45 km/h top speed, and can carry up to 180 kg. It comes with a heavy-duty rear rack.";
+    }
+    if (msg.includes("fold") || msg.includes("commuter") || msg.includes("urban")) {
+      return "The **TRIP Fold X** (₱57,000) is our aerospace aluminum folding e-bike. It folds in 5 seconds, weighs 24 kg, offers a 40–50 km range, and reaches 40 km/h. Perfect for multi-modal transport and urban commuting!";
+    }
+    if (msg.includes("ranger") || msg.includes("mountain") || msg.includes("off-road")) {
+      return "The **TRIP Ranger 750** (₱59,000) is our mountain/off-road fat-tire e-bike. It features a high-torque 750W motor, full suspension fork, hydraulic disc brakes, and reaches up to 50 km/h.";
+    }
+    return "We offer three premium e-bike models:\n\n1. **TRIP Cargo Pro** (₱65,000) - For delivery and last-mile courier services.\n2. **TRIP Fold X** (₱57,000) - Folding, lightweight urban commuter.\n3. **TRIP Ranger 750** (₱59,000) - All-terrain mountain e-bike.\n\nWhich one are you most interested in?";
+  }
+
+  if (msg.includes("quote") || msg.includes("quotation")) {
+    return "You can request a custom quotation directly on our website! Just close this chat window and click the **Get a Quote** button in the header navigation or the products section to enter your specifications.";
+  }
+
+  if (msg.includes("service") || msg.includes("center") || msg.includes("repair") || msg.includes("mandaluyong") || msg.includes("location") || msg.includes("store")) {
+    return "We have 6 nationwide service centers:\n\n* **Mandaluyong City**: 123 Electric Avenue\n* **Quezon City**: 456 E-Mobility Blvd\n* **Cebu City**: 789 Green Transport Hub\n* **Davao City**: 321 Clean Energy Park\n* **Iloilo City**: 654 Eco Transport Zone\n* **Pampanga (Clark)**: 987 Angeles City Tech Park\n\nYou can book a service appointment online on our Services page.";
+  }
+
+  if (msg.includes("warranty")) {
+    return "TRIP E-Bikes come with a premium warranty:\n\n* **Frame**: 3 years\n* **Motor & Electrical**: 1 year\n* **Battery**: 1 year\n* **Components & Brakes**: 6 months";
+  }
+
+  if (msg.includes("fleet") || msg.includes("bulk") || msg.includes("business") || msg.includes("corporate")) {
+    return "For fleet or corporate inquiries, we offer attractive volume discounts for 5+ units. Please send your requirements through our Quotation form or email us at **sales@tripmobility.ph**!";
+  }
+
+  if (msg.includes("financing") || msg.includes("payment") || msg.includes("installment")) {
+    return "Yes, we support flexible financing options and payment plans for both retail and corporate customers. Please contact our sales team at **+63 2 8123 4567** or request a quote for more details.";
+  }
+
+  if (msg.includes("hello") || msg.includes("hi") || msg.includes("hey")) {
+    return "Hello! How can I help you today? Ask me about our e-bike models, service center locations, or warranty coverage.";
+  }
+
+  return "Thanks for your message! I'm here to help. You can ask me about e-bike specs (Cargo Pro, Fold X, Ranger 750), pricing, store locations, or how to get a custom quote.";
+}
 
 interface ChatMessage {
   id: string;
@@ -50,19 +94,15 @@ export default function LiveChat() {
   const [aiTyping, setAiTyping] = useState(false);
   const [convHistory, setConvHistory] = useState<ConvTurn[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const pollRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Check if chat is enabled
   useEffect(() => {
-    supabase
-      .from("system_settings")
-      .select("*")
-      .eq("key", "chat_enabled")
-      .single()
-      .then(({ data, error }) => {
-        if (!error && data) {
-          setChatEnabled(data.value === "true" || data.value === true || data.value === "1");
+    getDoc(doc(db, "system_settings", "chat_enabled"))
+      .then((docSnap) => {
+        if (docSnap.exists()) {
+          const val = docSnap.data().value;
+          setChatEnabled(val === "true" || val === true || val === "1");
         }
       })
       .catch(() => {});
@@ -71,79 +111,56 @@ export default function LiveChat() {
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   useEffect(() => { if (open && !minimized) scrollToBottom(); }, [messages, open, minimized]);
 
-  const fetchMessages = useCallback(async () => {
-    if (!sessionId) return;
-    const { data } = await supabase
-      .from("chat_messages")
-      .select("*")
-      .eq("session_id", sessionId)
-      .order("created_at", { ascending: true });
-    if (data) {
-      const mapped = data.map((m: any) => ({
-        id: String(m.id),
-        session_id: m.session_id,
-        sender_type: m.sender === "user" ? "customer" : m.sender,
-        sender_name: m.sender === "user" ? "You" : (m.sender === "bot" ? "TRIP AI" : "Agent"),
-        message: m.message,
-        read: m.read === 1 || m.read === true,
-        created_at: m.created_at,
-      }));
-      setMessages(mapped);
-      if (!open || minimized) {
-        const unread = mapped.filter((m: any) => m.sender_type !== "customer" && !m.read).length;
-        setUnreadCount(unread);
-      }
-    }
-  }, [sessionId, open, minimized]);
-
   // Realtime subscription setup
   useEffect(() => {
     if (!sessionId) return;
-    fetchMessages();
 
-    // Subscribe to new messages
-    const channel = supabase
-      .channel(`chat:${sessionId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_messages",
-          filter: `session_id=eq.${sessionId}`,
-        },
-        (payload) => {
-          const newMsg = payload.new as any;
-          const mapped = {
-            id: String(newMsg.id),
-            session_id: newMsg.session_id,
-            sender_type: newMsg.sender === "user" ? "customer" : newMsg.sender,
-            sender_name: newMsg.sender === "user" ? "You" : (newMsg.sender === "bot" ? "TRIP AI" : "Agent"),
-            message: newMsg.message,
-            read: newMsg.read === 1 || newMsg.read === true,
-            created_at: newMsg.created_at,
-          };
-          setMessages((prev) => {
-            if (prev.some(m => m.id === mapped.id)) return prev;
-            return [...prev, mapped];
-          });
-        }
-      )
-      .subscribe();
+    const q = query(
+      collection(db, "chat_messages"),
+      where("session_id", "==", sessionId),
+      orderBy("created_at", "asc")
+    );
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchMessages, sessionId]);
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map((docSnap) => {
+        const m = docSnap.data();
+        return {
+          id: docSnap.id,
+          session_id: m.session_id,
+          sender_type: m.sender === "user" ? "customer" : m.sender,
+          sender_name: m.sender === "user" ? "You" : (m.sender === "bot" ? "TRIP AI" : "Agent"),
+          message: m.message,
+          read: m.read === 1 || m.read === true,
+          created_at: m.created_at instanceof Timestamp ? m.created_at.toDate().toISOString() : m.created_at,
+        };
+      });
+      setMessages(msgs);
+      if (!open || minimized) {
+        const unread = msgs.filter((m: any) => m.sender_type !== "customer" && !m.read).length;
+        setUnreadCount(unread);
+      }
+    }, (err) => {
+      console.warn("Messages snapshot error:", err);
+    });
+
+    return () => unsubscribe();
+  }, [sessionId, open, minimized]);
 
   useEffect(() => {
     if (open && !minimized && sessionId) {
       setUnreadCount(0);
-      supabase
-        .from("chat_messages")
-        .update({ read: true })
-        .eq("session_id", sessionId)
-        .neq("sender", "user");
+      // Mark messages as read by updating docs
+      getDocs(
+        query(
+          collection(db, "chat_messages"),
+          where("session_id", "==", sessionId),
+          where("sender", "!=", "user")
+        )
+      ).then((snap) => {
+        snap.forEach((docSnap) => {
+          updateDoc(docSnap.ref, { read: true });
+        });
+      });
     }
   }, [open, minimized, sessionId]);
 
@@ -152,42 +169,36 @@ export default function LiveChat() {
     const email = customer?.email || guestEmail.trim() || null;
     const generatedId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     
-    const { error } = await supabase.from("chat_sessions").insert({
-      id: generatedId,
-      user_name: name,
-      user_email: email,
-      status: "active"
-    });
-    if (error) return;
-    
-    setSessionId(generatedId);
-    setStarted(true);
-    setShowQuickActions(true);
-    
-    await supabase.from("chat_messages").insert({
-      session_id: generatedId,
-      sender: "bot",
-      message: BOT_WELCOME
-    });
-    
-    await fetchMessages();
+    try {
+      await setDoc(doc(db, "chat_sessions", generatedId), {
+        user_name: name,
+        user_email: email,
+        status: "active",
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now()
+      });
+      
+      setSessionId(generatedId);
+      setStarted(true);
+      setShowQuickActions(true);
+      
+      await addDoc(collection(db, "chat_messages"), {
+        session_id: generatedId,
+        sender: "bot",
+        message: BOT_WELCOME,
+        read: false,
+        created_at: Timestamp.now()
+      });
+    } catch (err) {
+      console.error("Failed to start chat session:", err);
+    }
   };
 
   const getAIResponse = async (userMessage: string, history: ConvTurn[]) => {
     setAiTyping(true);
-    const { data, error } = await supabase.functions.invoke("ai-chat-bot", {
-      body: {
-        message: userMessage,
-        conversation_history: history,
-      }
-    });
-
+    await new Promise((resolve) => setTimeout(resolve, 800 + Math.random() * 800)); // Simulate networking delay
     setAiTyping(false);
-    if (error) {
-      console.error("AI chat error:", error.message);
-      return null;
-    }
-    return data?.reply || null;
+    return getLocalBotResponse(userMessage);
   };
 
   const sendMessage = async (msgOverride?: string) => {
@@ -197,30 +208,42 @@ export default function LiveChat() {
     setShowQuickActions(false);
     setSending(true);
 
-    // Insert customer message
-    await supabase.from("chat_messages").insert({
-      session_id: sessionId,
-      sender: "user",
-      message: msg
-    });
-    
-    await fetchMessages();
-    setSending(false);
-
-    // Build conversation history for AI (last 6 turns)
-    const currentHistory = [...convHistory, { role: "user" as const, content: msg }];
-    const trimmedHistory = currentHistory.slice(-12); // last 6 exchanges
-
-    // Get AI response
-    const aiReply = await getAIResponse(msg, trimmedHistory.slice(0, -1));
-    if (aiReply) {
-      await supabase.from("chat_messages").insert({
+    try {
+      // Insert customer message
+      await addDoc(collection(db, "chat_messages"), {
         session_id: sessionId,
-        sender: "bot",
-        message: aiReply
+        sender: "user",
+        message: msg,
+        read: false,
+        created_at: Timestamp.now()
       });
-      setConvHistory([...trimmedHistory, { role: "assistant" as const, content: aiReply }]);
-      await fetchMessages();
+      
+      // Update session's updated_at
+      await updateDoc(doc(db, "chat_sessions", sessionId), {
+        updated_at: Timestamp.now()
+      });
+      
+      setSending(false);
+
+      // Build conversation history for AI (last 6 turns)
+      const currentHistory = [...convHistory, { role: "user" as const, content: msg }];
+      const trimmedHistory = currentHistory.slice(-12); // last 6 exchanges
+
+      // Get AI response
+      const aiReply = await getAIResponse(msg, trimmedHistory.slice(0, -1));
+      if (aiReply) {
+        await addDoc(collection(db, "chat_messages"), {
+          session_id: sessionId,
+          sender: "bot",
+          message: aiReply,
+          read: false,
+          created_at: Timestamp.now()
+        });
+        setConvHistory([...trimmedHistory, { role: "assistant" as const, content: aiReply }]);
+      }
+    } catch (err) {
+      console.error("Failed to send chat message:", err);
+      setSending(false);
     }
   };
 
