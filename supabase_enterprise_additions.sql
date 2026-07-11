@@ -13,13 +13,6 @@ DROP TABLE IF EXISTS public.quotation_items CASCADE;
 DROP TABLE IF EXISTS public.quotations CASCADE;
 DROP TABLE IF EXISTS public.lead_activities CASCADE;
 DROP TABLE IF EXISTS public.leads CASCADE;
-
-DROP TRIGGER IF EXISTS audit_leads_trigger ON public.leads;
-DROP TRIGGER IF EXISTS audit_quotations_trigger ON public.quotations;
-DROP TRIGGER IF EXISTS on_quotation_created ON public.quotations;
-DROP TRIGGER IF EXISTS update_leads_updated_at ON public.leads;
-DROP TRIGGER IF EXISTS update_quotations_updated_at ON public.quotations;
-
 DROP SEQUENCE IF EXISTS public.quotation_number_seq;
 
 -- Helper trigger function to update updated_at column (if not already defined)
