@@ -7,18 +7,18 @@
 -- ----------------------------------------------------------------------------
 -- 0. Cleanup / Drop Tables if they exist (Reverse Order of Dependency)
 -- ----------------------------------------------------------------------------
-DROP TRIGGER IF EXISTS audit_crm_leads_trigger ON public.crm_leads;
-DROP TRIGGER IF EXISTS audit_quotations_trigger ON public.quotations;
-DROP TRIGGER IF EXISTS on_quotation_created ON public.quotations;
-DROP TRIGGER IF EXISTS update_crm_leads_updated_at ON public.crm_leads;
-DROP TRIGGER IF EXISTS update_quotations_updated_at ON public.quotations;
-
 DROP TABLE IF EXISTS public.audit_logs CASCADE;
 DROP TABLE IF EXISTS public.canned_responses CASCADE;
 DROP TABLE IF EXISTS public.quotation_items CASCADE;
 DROP TABLE IF EXISTS public.quotations CASCADE;
 DROP TABLE IF EXISTS public.lead_activities CASCADE;
-DROP TABLE IF EXISTS public.crm_leads CASCADE;
+DROP TABLE IF EXISTS public.leads CASCADE;
+
+DROP TRIGGER IF EXISTS audit_leads_trigger ON public.leads;
+DROP TRIGGER IF EXISTS audit_quotations_trigger ON public.quotations;
+DROP TRIGGER IF EXISTS on_quotation_created ON public.quotations;
+DROP TRIGGER IF EXISTS update_leads_updated_at ON public.leads;
+DROP TRIGGER IF EXISTS update_quotations_updated_at ON public.quotations;
 
 DROP SEQUENCE IF EXISTS public.quotation_number_seq;
 
@@ -32,48 +32,48 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ----------------------------------------------------------------------------
--- 1. crm_leads Table
+-- 1. leads Table
 -- ----------------------------------------------------------------------------
-CREATE TABLE public.crm_leads (
+CREATE TABLE public.leads (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email VARCHAR(255) CHECK (email IS NULL OR email ~* '^[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,4}$'),
-    phone VARCHAR(50),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL CHECK (email ~* '^[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,4}$'),
+    mobile VARCHAR(50) NOT NULL,
     company VARCHAR(255),
-    interested_model_id INT REFERENCES public.products_cms(id) ON DELETE SET NULL,
+    use_type VARCHAR(50) NOT NULL DEFAULT 'personal',
+    product_interest VARCHAR(255) NOT NULL,
     quantity INT NOT NULL DEFAULT 1 CHECK (quantity > 0),
-    usage_type VARCHAR(100),
-    budget DECIMAL(12, 2) CHECK (budget IS NULL OR budget >= 0),
-    lead_source VARCHAR(100),
-    assigned_agent_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-    lead_score INT DEFAULT 0 CHECK (lead_score BETWEEN 0 AND 100),
-    pipeline_stage VARCHAR(50) NOT NULL DEFAULT 'New' CHECK (
-        pipeline_stage IN (
-            'New', 'Contacted', 'Qualified', 'Needs Analysis', 
-            'Quotation Preparing', 'Quotation Sent', 'Negotiation', 
-            'Test Ride Scheduled', 'Decision Pending', 'Closed Won', 
-            'Closed Lost', 'Archived'
+    budget VARCHAR(100),
+    contact_method VARCHAR(100) NOT NULL,
+    notes TEXT,
+    status VARCHAR(50) NOT NULL DEFAULT 'new' CHECK (
+        status IN (
+            'new', 'contacted', 'qualified', 'proposal', 'negotiation', 
+            'closed_won', 'closed_lost', 'archived'
         )
     ),
+    score INT NOT NULL DEFAULT 0 CHECK (score BETWEEN 0 AND 100),
+    source VARCHAR(100) NOT NULL DEFAULT 'website',
+    assigned_to VARCHAR(100),
     priority VARCHAR(20) NOT NULL DEFAULT 'Medium' CHECK (
         priority IN ('Low', 'Medium', 'High', 'Critical')
     ),
     last_activity_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    next_followup_at TIMESTAMPTZ,
+    follow_up_date TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexes for crm_leads performance
-CREATE INDEX idx_crm_leads_assigned_agent ON public.crm_leads(assigned_agent_id);
-CREATE INDEX idx_crm_leads_pipeline_stage ON public.crm_leads(pipeline_stage);
-CREATE INDEX idx_crm_leads_priority ON public.crm_leads(priority);
-CREATE INDEX idx_crm_leads_lead_score ON public.crm_leads(lead_score DESC);
-CREATE INDEX idx_crm_leads_created_at ON public.crm_leads(created_at DESC);
-CREATE INDEX idx_crm_leads_next_followup ON public.crm_leads(next_followup_at) WHERE next_followup_at IS NOT NULL;
+-- Indexes for leads performance
+CREATE INDEX idx_leads_assigned_to ON public.leads(assigned_to);
+CREATE INDEX idx_leads_status ON public.leads(status);
+CREATE INDEX idx_leads_priority ON public.leads(priority);
+CREATE INDEX idx_leads_score ON public.leads(score DESC);
+CREATE INDEX idx_leads_created_at ON public.leads(created_at DESC);
 
--- Trigger to update updated_at for crm_leads
-CREATE TRIGGER update_crm_leads_updated_at
-    BEFORE UPDATE ON public.crm_leads
+-- Trigger to update updated_at for leads
+CREATE TRIGGER update_leads_updated_at
+    BEFORE UPDATE ON public.leads
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
@@ -83,7 +83,7 @@ CREATE TRIGGER update_crm_leads_updated_at
 -- ----------------------------------------------------------------------------
 CREATE TABLE public.lead_activities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    lead_id UUID NOT NULL REFERENCES public.crm_leads(id) ON DELETE CASCADE,
+    lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
     admin_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     type VARCHAR(50) NOT NULL CHECK (
         type IN ('note', 'email', 'call', 'stage_change', 'task', 'system')
@@ -275,9 +275,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Attach auditing to crm_leads and quotations
-CREATE TRIGGER audit_crm_leads_trigger
-    AFTER INSERT OR UPDATE OR DELETE ON public.crm_leads
+-- Attach auditing to leads and quotations
+CREATE TRIGGER audit_leads_trigger
+    AFTER INSERT OR UPDATE OR DELETE ON public.leads
     FOR EACH ROW EXECUTE FUNCTION public.audit_trigger_fn();
 
 CREATE TRIGGER audit_quotations_trigger
@@ -290,7 +290,7 @@ CREATE TRIGGER audit_quotations_trigger
 -- ----------------------------------------------------------------------------
 
 -- Enable Row Level Security on all newly created tables
-ALTER TABLE public.crm_leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lead_activities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quotations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quotation_items ENABLE ROW LEVEL SECURITY;
@@ -298,7 +298,7 @@ ALTER TABLE public.canned_responses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- 8.1 Service Role Policies (Complete backend access)
-CREATE POLICY "Allow service_role full crm_leads access" ON public.crm_leads FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service_role full leads access" ON public.leads FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service_role full lead_activities access" ON public.lead_activities FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service_role full quotations access" ON public.quotations FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service_role full quotation_items access" ON public.quotation_items FOR ALL TO service_role USING (true) WITH CHECK (true);
@@ -307,8 +307,8 @@ CREATE POLICY "Allow service_role full audit_logs access" ON public.audit_logs F
 
 -- 8.2 Authenticated Admins/Agents Policies
 -- Authenticated admins/agents can manage leads, activities, and canned responses
-CREATE POLICY "Allow authenticated users to read leads" ON public.crm_leads FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Allow authenticated users to insert/update leads" ON public.crm_leads FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow authenticated users to read leads" ON public.leads FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated users to insert/update leads" ON public.leads FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow authenticated users to read lead activities" ON public.lead_activities FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Allow authenticated users to insert activities" ON public.lead_activities FOR INSERT TO authenticated WITH CHECK (true);
