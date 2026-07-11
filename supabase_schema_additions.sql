@@ -5,6 +5,30 @@
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
+-- 0. Create Leads Table
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.leads (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    mobile VARCHAR(50) NOT NULL,
+    company VARCHAR(255) NULL,
+    use_type VARCHAR(50) NOT NULL DEFAULT 'personal',
+    product_interest VARCHAR(255) NOT NULL,
+    quantity INT NOT NULL DEFAULT 1,
+    budget VARCHAR(100) NULL,
+    contact_method VARCHAR(100) NOT NULL,
+    notes TEXT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'new',
+    score INT NOT NULL DEFAULT 0,
+    source VARCHAR(100) NOT NULL DEFAULT 'website',
+    assigned_to VARCHAR(100) NULL,
+    follow_up_date TIMESTAMPTZ NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ----------------------------------------------------------------------------
 -- 1. Create Notifications Table
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.notifications (
